@@ -1,0 +1,1110 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>cABCDE & SOP Rettungsdienst Simulator</title>
+    <!-- PWA & iPadOS Vollbild-Optimierung -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="RD Simulation">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- jsPDF & AutoTable für Protokoll-Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        /* Optimierungen für iPad / Touch-Bedienung */
+        * {
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+        input, select, textarea {
+            user-select: auto;
+        }
+        /* Sanfte Animationen für Buttons */
+        .btn-transition {
+            transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* Custom Scrollbar für Tabs */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans min-h-screen flex flex-col antialiased">
+
+    <!-- Header-Bereich -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+            <!-- App-Titel & Timer -->
+            <div class="flex items-center gap-3">
+                <div class="bg-red-600 text-white p-2.5 rounded-xl shadow-inner flex items-center justify-center">
+                    <i class="fas fa-heartbeat text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold leading-tight text-slate-900">RD-Simulation</h1>
+                    <div class="flex items-center gap-2 text-xs font-semibold text-slate-600">
+                        <i class="fas fa-stopwatch text-red-600"></i>
+                        <span>Einsatzzeit:</span>
+                        <span id="mission-timer" class="font-mono text-sm font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded border border-red-200">00:00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Schnellaktionen (Nachforderung, PDF, Reset) -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <!-- Status Badge für aktive Nachforderung -->
+                <div id="status-nachforderung" class="hidden flex items-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-bold">
+                    <i class="fas fa-bullhorn text-red-600 animate-pulse"></i>
+                    <span id="status-text-nachforderung">NEF</span>
+                </div>
+
+                <!-- Button: Nachforderung anfordern -->
+                <button id="btn-open-nachforderung" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white rounded-xl font-semibold text-sm shadow transition-colors">
+                    <i class="fas fa-truck-medical text-base"></i>
+                    <span>Nachforderung</span>
+                </button>
+
+                <!-- Button: PDF Protokoll exportieren -->
+                <button id="btn-export-pdf" class="flex items-center gap-2 px-3.5 py-2.5 bg-slate-800 hover:bg-slate-900 active:bg-black text-white rounded-xl font-semibold text-sm shadow transition-colors">
+                    <i class="fas fa-file-pdf text-base text-red-400"></i>
+                    <span>Protokoll (PDF)</span>
+                </button>
+
+                <!-- Button: Simulation zurücksetzen -->
+                <button id="btn-reset-all" title="Einsatz zurücksetzen" class="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-600 rounded-xl font-semibold text-sm border border-slate-300 transition-colors">
+                    <i class="fas fa-rotate-right"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Horizontale Reiter-Navigation -->
+        <nav class="max-w-7xl mx-auto px-4 flex gap-2 overflow-x-auto no-scrollbar pb-2.5 pt-1 border-t border-slate-100" id="tab-container">
+            <!-- Dynamisch via JavaScript gerendert -->
+        </nav>
+    </header>
+
+    <!-- Hauptinhalt der Reiter -->
+    <main class="max-w-7xl mx-auto p-4 flex-1 w-full pb-20">
+        <!-- Optionales Trauma-Banner im cABCDE Reiter -->
+        <div id="trauma-toggle-container" class="hidden mb-4 p-4 bg-white rounded-2xl border-2 border-slate-200 shadow-sm flex items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-amber-100 text-amber-700 p-2.5 rounded-xl">
+                    <i class="fas fa-triangle-exclamation text-xl"></i>
+                </div>
+                <div>
+                    <h2 class="font-bold text-slate-900 text-base md:text-lg">Traumatisches Geschehen / Unfallmechanismus?</h2>
+                    <p class="text-xs md:text-sm text-slate-500">Aktiviert die Schnelle Trauma Untersuchung (STU)</p>
+                </div>
+            </div>
+            <label class="relative inline-flex items-center cursor-pointer flex-shrink-0">
+                <input type="checkbox" id="trauma-toggle" class="sr-only peer">
+                <div class="w-14 h-8 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-600"></div>
+            </label>
+        </div>
+
+        <!-- Dynamischer Container für Abschnitte und Schaltflächen -->
+        <div id="tab-content" class="space-y-6">
+            <!-- Inhalt wird dynamisch gerendert -->
+        </div>
+    </main>
+
+    <!-- Nachforderung Modal -->
+    <div id="modal-nachforderung" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-red-600 p-4 text-white flex justify-between items-center shadow-md">
+                <h3 class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-truck-medical"></i> Rettungsmittel nachfordern
+                </h3>
+                <button id="btn-close-modal" class="text-white hover:text-red-200 text-3xl leading-none px-2 focus:outline-none">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-6">
+                <!-- Schritt 1: Rettungsmittel -->
+                <div>
+                    <label class="block text-sm font-bold text-slate-700 mb-2">1. Gewünschtes Rettungsmittel:</label>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <button type="button" class="res-btn p-4 border-2 border-slate-200 rounded-xl font-semibold text-center hover:border-red-500 hover:bg-red-50 focus:outline-none btn-transition" data-resource="Single Responder">
+                            <i class="fas fa-user-doctor text-2xl block mb-1 text-slate-700"></i> Single Responder
+                        </button>
+                        <button type="button" class="res-btn p-4 border-2 border-slate-200 rounded-xl font-semibold text-center hover:border-red-500 hover:bg-red-50 focus:outline-none btn-transition" data-resource="NEF">
+                            <i class="fas fa-car-side text-2xl block mb-1 text-slate-700"></i> NEF
+                        </button>
+                        <button type="button" class="res-btn p-4 border-2 border-slate-200 rounded-xl font-semibold text-center hover:border-red-500 hover:bg-red-50 focus:outline-none btn-transition" data-resource="Tragehilfe">
+                            <i class="fas fa-people-carry text-2xl block mb-1 text-slate-700"></i> Tragehilfe
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Schritt 2: Begründung -->
+                <div id="reason-container" class="opacity-40 pointer-events-none transition-opacity">
+                    <label class="block text-sm font-bold text-slate-700 mb-2">2. Begründung (für SR / NEF zwingend):</label>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button type="button" class="reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition" data-reason="A-Problem">
+                            A-Problem (Atemweg)
+                        </button>
+                        <button type="button" class="reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition" data-reason="B-Problem">
+                            B-Problem (Belüftung)
+                        </button>
+                        <button type="button" class="reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition" data-reason="C-Problem">
+                            C-Problem (Kreislauf)
+                        </button>
+                        <button type="button" class="reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition" data-reason="D-Problem">
+                            D-Problem (Defizit/Neuro)
+                        </button>
+                        <button type="button" class="reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition sm:col-span-2" data-reason="E-Problem (Schmerztherapie etc.)">
+                            E-Problem (Schmerztherapie, Trauma, etc.)
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex justify-end gap-3">
+                <button id="btn-cancel-modal" class="px-5 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 text-sm">Abbrechen</button>
+                <button id="btn-save-modal" class="px-6 py-3 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 opacity-50 cursor-not-allowed text-sm shadow transition-opacity" disabled>Übernehmen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Options Modal (Unterauswahl bei Maßnahmen & Medikamenten) -->
+    <div id="modal-options" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-blue-600 p-4 text-white flex justify-between items-center shadow-md">
+                <h3 id="options-modal-title" class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-list-ul"></i> Option auswählen
+                </h3>
+                <button id="btn-close-options-modal" class="text-white hover:text-blue-200 text-3xl leading-none px-2 focus:outline-none">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1">
+                <div id="options-container" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <!-- Optionen werden dynamisch injiziert -->
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">
+                <button id="btn-cancel-options-modal" class="px-5 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 text-sm">Abbrechen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Medikamenten Modal (Dosis & Applikationsart) -->
+    <div id="modal-medication" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div class="bg-emerald-600 p-4 text-white flex justify-between items-center shadow-md">
+                <h3 id="med-modal-title" class="text-xl font-bold flex items-center gap-2">
+                    <i class="fas fa-prescription-bottle-medical"></i> Medikament verabreichen
+                </h3>
+                <button id="btn-close-med-modal" class="text-white hover:text-emerald-200 text-3xl leading-none px-2 focus:outline-none">&times;</button>
+            </div>
+            <div class="p-6 overflow-y-auto space-y-6">
+                <!-- 1. Applikationsart -->
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">1. Applikationsart wählen</label>
+                    <div class="grid grid-cols-5 gap-2" id="med-route-container">
+                        <button type="button" class="med-route-btn py-3 px-2 border-2 border-slate-200 rounded-xl font-bold text-center hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-sm md:text-base text-slate-700" data-route="p.o.">p.o.</button>
+                        <button type="button" class="med-route-btn py-3 px-2 border-2 border-slate-200 rounded-xl font-bold text-center hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-sm md:text-base text-slate-700" data-route="i.v.">i.v.</button>
+                        <button type="button" class="med-route-btn py-3 px-2 border-2 border-slate-200 rounded-xl font-bold text-center hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-sm md:text-base text-slate-700" data-route="i.m.">i.m.</button>
+                        <button type="button" class="med-route-btn py-3 px-2 border-2 border-slate-200 rounded-xl font-bold text-center hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-sm md:text-base text-slate-700" data-route="inh.">inh.</button>
+                        <button type="button" class="med-route-btn py-3 px-2 border-2 border-slate-200 rounded-xl font-bold text-center hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-sm md:text-base text-slate-700" data-route="rect.">rect.</button>
+                    </div>
+                </div>
+
+                <!-- 2. Dosis & Einheit -->
+                <div>
+                    <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">2. Dosierung & Einheit</label>
+                    <div class="flex items-center gap-3">
+                        <div class="relative flex-1">
+                            <input type="number" id="med-dose-input" step="any" min="0" inputmode="decimal" placeholder="z. B. 250" class="w-full text-2xl font-bold p-3.5 border-2 border-slate-200 rounded-xl focus:border-emerald-500 focus:outline-none text-slate-900 bg-slate-50">
+                        </div>
+                        <div class="grid grid-cols-2 gap-2 w-36" id="med-unit-container">
+                            <button type="button" class="med-unit-btn py-3.5 border-2 border-slate-200 rounded-xl font-bold text-base hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-slate-700" data-unit="mg">mg</button>
+                            <button type="button" class="med-unit-btn py-3.5 border-2 border-slate-200 rounded-xl font-bold text-base hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-slate-700" data-unit="ml">ml</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Vorschau Box -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-500">Zusammenfassung:</span>
+                    <span id="med-preview-badge" class="font-bold text-slate-500 text-sm italic">Noch unvollständig</span>
+                </div>
+            </div>
+            <div class="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+                <button id="btn-delete-med" class="hidden px-4 py-3 rounded-xl font-bold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 text-sm">
+                    <i class="fas fa-trash-can mr-1"></i> Gabe löschen
+                </button>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button id="btn-cancel-med-modal" class="px-5 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 text-sm">Abbrechen</button>
+                    <button id="btn-save-med-modal" class="px-6 py-3 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 opacity-50 cursor-not-allowed text-sm shadow transition-all" disabled>Verabreichen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reset Bestätigungs-Modal (kein alert/confirm!) -->
+    <div id="modal-reset" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden p-6 text-center">
+            <div class="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                <i class="fas fa-rotate-right"></i>
+            </div>
+            <h3 class="text-xl font-bold text-slate-900 mb-2">Simulation zurücksetzen?</h3>
+            <p class="text-slate-600 text-sm mb-6">Alle bisher erhobenen Befunde, Maßnahmen und das Zeitprotokoll werden gelöscht.</p>
+            <div class="flex justify-center gap-3">
+                <button id="btn-cancel-reset" class="px-5 py-2.5 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 text-sm">Abbrechen</button>
+                <button id="btn-confirm-reset" class="px-5 py-2.5 rounded-xl font-semibold text-white bg-red-600 hover:bg-red-700 text-sm shadow">Zurücksetzen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logik & Anwendungsdaten -->
+    <script>
+        // Datenstruktur der Rettungsdienst-Simulation
+        const appData = [
+            {
+                id: "tab-ersteinschaetzung",
+                title: "1-2-3-4 Ersteinschätzung",
+                sections: [
+                    {
+                        title: "1 - Szenenüberblick",
+                        buttons: [
+                            { q: "Einsatzstelle sicher?", a: "Ja, gesichert", icon: "fa-shield-halved" },
+                            { q: "PSA ausreichend?", a: "Ja, vollständig angelegt", icon: "fa-hard-hat" },
+                            { q: "Mechanismus erkennbar?", a: "Nein, kein Anhalt", icon: "fa-car-burst" }
+                        ]
+                    },
+                    {
+                        title: "2 - Ersteindruck",
+                        buttons: [
+                            { q: "Lebensbedrohliche Blutung?", a: "Keine lebensbedrohliche Blutung", icon: "fa-droplet-slash" },
+                            { q: "Körperhaltung?", a: "Entspannt / Unauffällig", icon: "fa-person" },
+                            { q: "Spontanbewegungen vorhanden?", a: "Ja, zielgerichtet vorhanden", icon: "fa-person-walking" },
+                            { q: "Offensichtliche Verletzungen?", a: "Keine groben Verletzungen sichtbar", icon: "fa-bandage" },
+                            { q: "Geschlecht, Alter, Gewicht?", a: "Männlich, ca. 50 J., ca. 80 kg", icon: "fa-venus-mars" },
+                            { q: "Hautfarbe? Feuchtigkeit?", a: "Rosig, warm, trocken", icon: "fa-hand-dots" },
+                            { q: "Erbrochenes, Stuhl, Harn?", a: "Nein, kein Abgang", icon: "fa-toilet" }
+                        ]
+                    },
+                    {
+                        title: "3 - Bewusstseinslage",
+                        buttons: [
+                            { q: "WASB?", a: "W - Patient ist wach und ansprechbar", icon: "fa-eye" }
+                        ]
+                    },
+                    {
+                        title: "4 - Hauptbeschwerde",
+                        buttons: [
+                            { q: "Leitsymptom?", a: "Akute Brustenge / Dyspnoe", icon: "fa-comment-medical" }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "tab-cabcde",
+                title: "cABCDE",
+                hasTraumaToggle: true,
+                sections: [
+                    {
+                        title: "c - Critical Bleeding",
+                        buttons: [
+                            { q: "Starke Blutung?", a: "Keine kritischen Blutungen vorhanden", icon: "fa-droplet" }
+                        ]
+                    },
+                    {
+                        title: "A - Airway",
+                        buttons: [
+                            { q: "Atemweg?", a: "Frei und nicht gefährdet", icon: "fa-wind" },
+                            { q: "Atemgeräusche?", a: "Keine pathologischen Geräusche (Stridor/Rasseln)", icon: "fa-volume-xmark" },
+                            { q: "HWS-Immobilisierung?", a: "Nicht indiziert (kein Trauma)", icon: "fa-user-injured" }
+                        ]
+                    },
+                    {
+                        title: "B - Breathing",
+                        buttons: [
+                            { q: "Zyanose?", a: "Keine Zyanose erkennbar", icon: "fa-face-meh" },
+                            { q: "Atemmuster?", a: "Regelmäßig, eupnoisch", icon: "fa-wave-square" },
+                            { q: "Thoraxexkursion?", a: "Seitengleich und seitensymmetrisch", icon: "fa-arrows-left-right" },
+                            { q: "AF?", a: "14 / min (Normfrequent)", icon: "fa-stopwatch-20" },
+                            { q: "Atemtiefe?", a: "Normale Tiefe, ausreichend", icon: "fa-lungs" },
+                            { q: "Einsatz der AHM?", a: "Keine Atemhilfsmuskulatur im Einsatz", icon: "fa-compress" },
+                            { q: "Initiales SpO2?", a: "98% bei Raumluft", icon: "fa-heart-pulse" },
+                            { q: "Auskultation?", a: "Vesikuläres Atemgeräusch bds., keine RGs", icon: "fa-stethoscope" },
+                            { q: "Atmung suffizient?", a: "Ja, Atmung ist suffizient", icon: "fa-check-double" }
+                        ]
+                    },
+                    {
+                        title: "C - Circulation",
+                        buttons: [
+                            { q: "Haut: Farbe, Temp., Beschaffenheit?", a: "Rosig, warm und trocken", icon: "fa-temperature-half" },
+                            { q: "Radialispuls/Carotispuls?", a: "Kräftig, rhythmisch, ca. 75/min", icon: "fa-heart-circle-bolt" },
+                            { q: "Rekap(z)?", a: "< 2 Sekunden (zentral & peripher)", icon: "fa-hourglass-start" },
+                            { q: "STU?", a: "O.B. (Kopf, Hals, Thorax, Abdomen, Becken, Extr. stabil)", icon: "fa-x-ray", fullWidth: true, requiresTrauma: true }
+                        ]
+                    },
+                    {
+                        title: "D - Disability",
+                        buttons: [
+                            { q: "ZOPS?", a: "4-fach orientiert (Zeit, Ort, Person, Situation)", icon: "fa-compass" },
+                            { q: "Pupillen?", a: "Isokor, mittelweit, prompte Lichtreaktion bds.", icon: "fa-eye" },
+                            { q: "DMS(K)?", a: "Durchblutung, Motorik & Sensibilität allseits intakt", icon: "fa-hand" },
+                            { q: "FAST+?", a: "Negativ (kein Hinweis auf Apoplex)", icon: "fa-brain" },
+                            { q: "GCS?", a: "15 Punkte (4-5-6)", icon: "fa-award" }
+                        ]
+                    },
+                    {
+                        title: "E - Exposure",
+                        buttons: [
+                            { q: "Abdomen?", a: "Weich, kein Druckschmerz, keine Abwehrspannung", icon: "fa-user-check" },
+                            { q: "Weitere Untersuchungen?", a: "BZ 110 mg/dl, Temp 36.8 °C, EKG SR", icon: "fa-magnifying-glass-chart" }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "tab-sampler",
+                title: "SAMPLER & OPQRST",
+                sections: [
+                    {
+                        title: "SAMPLER Anamnese",
+                        buttons: [
+                            { q: "Symptome?", a: "Retrosternales Druckgefühl, leichte Übelkeit", icon: "fa-head-side-cough" },
+                            { q: "Allergien?", a: "Keine bekannten Allergien", icon: "fa-shield-virus" },
+                            { q: "Medikamente?", a: "ASS 100mg, Ramipril 5mg morgens", icon: "fa-pills" },
+                            { q: "Patientengeschichte?", a: "Arterielle Hypertonie seit 8 Jahren", icon: "fa-notes-medical" },
+                            { q: "Letzte Ins and Outs?", a: "Frühstück vor ca. 2 Std. (Kaffee & Toast)", icon: "fa-utensils" },
+                            { q: "Ereignisse?", a: "Schmerz trat in Ruhe beim Zeitunglesen auf", icon: "fa-calendar-check" },
+                            { q: "Risikofaktoren?", a: "Nikotinabusus, Hypertonie", icon: "fa-triangle-exclamation" },
+                            { q: "Schwangerschaft?", a: "Nein / Entfällt", icon: "fa-baby" }
+                        ]
+                    },
+                    {
+                        title: "Schmerzerfassung (OPQRST)",
+                        buttons: [
+                            { q: "Onset?", a: "Plötzlicher Beginn vor ca. 45 Minuten", icon: "fa-bolt" },
+                            { q: "Provocation/Palliation?", a: "Weder bewegungs- noch atemabhängig", icon: "fa-hand-holding-medical" },
+                            { q: "Quality?", a: "Dumpf, drückend wie ein Stein auf der Brust", icon: "fa-circle-exclamation" },
+                            { q: "Radiation/Region?", a: "Retrosternal mit Ausstrahlung in li. Arm", icon: "fa-arrows-split-up-and-left" },
+                            { q: "Severity?", a: "NRS 7 / 10", icon: "fa-gauge-high" },
+                            { q: "Time?", a: "Konstant anhaltend, keine Besserung", icon: "fa-clock" }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "tab-massnahmen",
+                title: "Maßnahmen",
+                sections: [
+                    {
+                        title: "c - Critical Bleeding",
+                        buttons: [
+                            { q: "Blutstillung", options: ["Druckverband", "Tourniquet", "Israeli Bandage", "Hämostyptika"], icon: "fa-droplet" }
+                        ]
+                    },
+                    {
+                        title: "A - Airway",
+                        buttons: [
+                            { q: "Heimlich-Handgriff", a: "Erfolgreich durchgeführt", icon: "fa-hands" },
+                            { q: "Fremdkörperentfernung", a: "Fremdkörper manuell/mit Zange entfernt", icon: "fa-hand-sparkles" },
+                            { q: "Coolpack", a: "Lokal angelegt", icon: "fa-snowflake" },
+                            { q: "Absaugen", a: "Mund-/Rachenraum effektiv abgesaugt", icon: "fa-wind" },
+                            { q: "Atemwegsmanagement", options: ["Guedeltubus", "Wendltubus", "Larynxtubus", "Larynxmaske", "iGel", "Endotrachealtubus", "Koniotomie"], icon: "fa-lungs" },
+                            { q: "HWS-Orthese", a: "Orthese (Stifneck) fachgerecht angelegt", icon: "fa-user-injured" }
+                        ]
+                    },
+                    {
+                        title: "B - Breathing",
+                        buttons: [
+                            { q: "O2-Gabe", options: ["1 L/min", "2 L/min", "4 L/min", "6 L/min", "8 L/min", "10 L/min", "12 L/min", "15 L/min"], icon: "fa-head-side-mask" },
+                            { q: "Beatmung", options: ["Beutel-Maske (BMV)", "CPAP-Therapie"], icon: "fa-lungs-virus" }
+                        ]
+                    },
+                    {
+                        title: "CPR / Reanimation",
+                        buttons: [
+                            { q: "Herzdruckmassage", options: ["Manuell (HDM)", "Maschinell (z.B. Lucas/Corpuls)"], icon: "fa-heart-pulse" },
+                            { q: "Defibrillation", a: "Schock erfolgreich abgegeben", icon: "fa-bolt-lightning" },
+                            { q: "Vector Change", a: "Paddles-Positionierung gewechselt", icon: "fa-arrows-rotate" }
+                        ]
+                    },
+                    {
+                        title: "C - Circulation",
+                        buttons: [
+                            { q: "Valsalva-Manöver", a: "Modifiziertes Valsalva-Manöver durchgeführt", icon: "fa-compress-arrows-alt" },
+                            { q: "Beckenschlinge", a: "Beckengurt symmetrisch angelegt und gespannt", icon: "fa-ring" },
+                            { q: "i.v.-Zugang", a: "Peripher-venöser Zugang erfolgreich etabliert", icon: "fa-syringe" },
+                            { q: "i.o.-Zugang", a: "Intraossärer Zugang (z.B. EZ-IO) gelegt", icon: "fa-bone" },
+                            { q: "Thoraxentlastung", options: ["Nadeldekompression (Punktion)", "Minithorakotomie / Drainage"], icon: "fa-stethoscope" },
+                            { q: "Transkutanes Pacing", a: "Schrittmacherfunktion gestartet", icon: "fa-wave-square" },
+                            { q: "Kardioversion", a: "Synchronisierte Kardioversion durchgeführt", icon: "fa-heart-crack" },
+                            { q: "Arterieller Zugang + RR", a: "Arterielle Blutdruckmessung etabliert", icon: "fa-vial" }
+                        ]
+                    },
+                    {
+                        title: "D - Disability",
+                        buttons: [
+                            { q: "Spezielle Untersuchung", a: "Erweiterte neurologische Testung durchgeführt", icon: "fa-brain" }
+                        ]
+                    },
+                    {
+                        title: "E - Exposure & Umwelt",
+                        buttons: [
+                            { q: "Wärmeerhalt", a: "Rettungsdecke / Decke angelegt", icon: "fa-temperature-arrow-up" },
+                            { q: "Notfallsonographie", a: "POCUS / FAST sonographisch durchgeführt", icon: "fa-laptop-medical" },
+                            { q: "Wundversorgung", a: "Steriler Verband angelegt", icon: "fa-briefcase-medical" },
+                            { q: "Geburt", a: "Geburt eingeleitet und fachgerecht betreut", icon: "fa-baby" }
+                        ]
+                    },
+                    {
+                        title: "Sanitäts- und Rettungstechniken",
+                        buttons: [
+                            { q: "Helmabnahme", a: "Zu zweit unter HWS-Immobilisierung durchgeführt", icon: "fa-helmet-safety" },
+                            { q: "Spineboard", a: "Patient achsengerecht auf Spineboard umgelagert", icon: "fa-bed" },
+                            { q: "Extremitätenschiene", options: ["Vakuumschiene", "SAM-Splint"], icon: "fa-crutch" },
+                            { q: "Rettungstuch", a: "Patient mit Rettungstuch transportiert", icon: "fa-people-carry-box" },
+                            { q: "Schaufeltrage", a: "Achsengerechte Aufnahme mit Schaufeltrage", icon: "fa-bars" },
+                            { q: "Vakuummatratze", a: "Vollständige Immobilisierung in Vakuummatratze", icon: "fa-mattress-pillow" },
+                            { q: "Rettungsboa", a: "Crash-Rettung mit Rettungsboa vorbereitet", icon: "fa-life-ring" },
+                            { q: "Reposition", a: "Fraktur/Luxation schonend reponiert", icon: "fa-arrows-to-circle" },
+                            { q: "Rückenschleiftechnik", a: "Notfallrettung aus Gefahrenbereich", icon: "fa-person-walking-arrow-right" },
+                            { q: "Rautek-Rettungsgriff", a: "Rettungsgriff durchgeführt", icon: "fa-hands-holding" },
+                            { q: "Umdrehen von Bauch- auf Rückenlage", a: "Schonend in Rückenlage gedreht", icon: "fa-arrows-spin" }
+                        ]
+                    },
+                    {
+                        title: "Einsatztaktik",
+                        buttons: [
+                            { q: "Revers", a: "Behandlungs-/Transportverweigerung unterzeichnet", icon: "fa-file-signature" },
+                            { q: "Belassung", a: "Belassung vor Ort nach Aufklärung dokumentiert", icon: "fa-house-user" },
+                            { q: "Übergabe an anderes RM", a: "Patientenübergabe an weiteres Rettungsmittel erfolgt", icon: "fa-truck-medical" }
+                        ]
+                    }
+                ]
+            },
+            {
+                id: "tab-meds",
+                title: "Medikamente & Infusionen",
+                sections: [
+                    {
+                        title: "Medikamente & Infusionen",
+                        buttons: [
+                            { q: "Acetylsalicylsäure", isMedication: true, icon: "fa-pills" },
+                            { q: "Amiodaron", isMedication: true, icon: "fa-heart-pulse" },
+                            { q: "Diazepam", isMedication: true, icon: "fa-pills" },
+                            { q: "Diphenhydramin", isMedication: true, icon: "fa-shield-virus" },
+                            { q: "Epinephrin (Adrenalin)", isMedication: true, icon: "fa-syringe" },
+                            { q: "Esketamin", isMedication: true, icon: "fa-capsules" },
+                            { q: "Fenoterolhydrobromid / Ipratropiumbromid", isMedication: true, icon: "fa-spray-can-sparkles" },
+                            { q: "Flumazenil", isMedication: true, icon: "fa-pills" },
+                            { q: "Glucose", isMedication: true, icon: "fa-cubes-stacked" },
+                            { q: "Lorazepam", isMedication: true, icon: "fa-tablets" },
+                            { q: "Metamizol", isMedication: true, icon: "fa-pills" },
+                            { q: "Methoxyfluran", isMedication: true, icon: "fa-lungs" },
+                            { q: "Midazolam", isMedication: true, icon: "fa-bed" },
+                            { q: "Naloxon", isMedication: true, icon: "fa-syringe" },
+                            { q: "Ondansetron", isMedication: true, icon: "fa-prescription-bottle" },
+                            { q: "Paracetamol", isMedication: true, icon: "fa-tablets" },
+                            { q: "Prednisolon", isMedication: true, icon: "fa-pills" },
+                            { q: "Salbutamol / Ipratropiumbromid", isMedication: true, icon: "fa-spray-can-sparkles" },
+                            { q: "Tranexamsäure", isMedication: true, icon: "fa-droplet" },
+                            { q: "Urapidil", isMedication: true, icon: "fa-heart" },
+                            { q: "Vollelektrolytlösung", isMedication: true, icon: "fa-bottle-water" }
+                        ]
+                    }
+                ]
+            }
+        ];
+
+        // Zentrale Styling-Klassen
+        const styleClasses = {
+            tabNormal: "flex-none min-w-[max-content] py-3 px-5 text-center font-semibold text-sm md:text-base text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors",
+            tabActive: "flex-none min-w-[max-content] py-3 px-5 text-center font-bold text-sm md:text-base text-white bg-blue-600 rounded-xl shadow transition-colors",
+            buttonNormal: "flex items-center gap-4 p-4 min-h-[70px] bg-white border-2 border-slate-200 rounded-xl shadow-sm text-left font-medium text-slate-800 hover:border-blue-400 hover:bg-blue-50/50 active:scale-[0.98] btn-transition select-none",
+            buttonToggled: "flex items-center gap-4 p-4 min-h-[70px] bg-emerald-50 border-2 border-emerald-500 rounded-xl shadow-md text-left font-semibold text-emerald-950 active:scale-[0.98] btn-transition select-none",
+            buttonDisabled: "flex items-center gap-4 p-4 min-h-[70px] bg-slate-100 border-2 border-slate-200 rounded-xl opacity-40 cursor-not-allowed text-left font-medium text-slate-400 select-none"
+        };
+
+        // App-Zustand
+        let currentTabId = appData[0].id;
+        let selectedResource = null;
+        let selectedReason = null;
+        let timerInterval = null;
+        let logEntries = [];
+
+        // App Initialisierung
+        window.onload = function() {
+            // Gespeicherte Protokolle laden
+            const storedLogs = sessionStorage.getItem('mission-logs');
+            if (storedLogs) {
+                try {
+                    logEntries = JSON.parse(storedLogs);
+                } catch(e) {
+                    logEntries = [];
+                }
+            }
+
+            startTimer();
+            renderTabs();
+            renderContent();
+            initModalLogic();
+            initOptionsModalLogic();
+            initMedicationModalLogic();
+            initResetLogic();
+            restoreNachforderung();
+
+            // PDF-Export Listener
+            document.getElementById('btn-export-pdf').onclick = exportPDF;
+        };
+
+        // Timer Logik
+        function startTimer() {
+            let startStamp = sessionStorage.getItem('mission-start-time');
+            if (!startStamp) {
+                startStamp = Date.now().toString();
+                sessionStorage.setItem('mission-start-time', startStamp);
+            }
+            const startTime = parseInt(startStamp, 10);
+
+            const updateDisplay = () => {
+                const diffSec = Math.floor((Date.now() - startTime) / 1000);
+                const mm = String(Math.floor(diffSec / 60)).padStart(2, '0');
+                const ss = String(diffSec % 60).padStart(2, '0');
+                document.getElementById('mission-timer').textContent = `${mm}:${ss}`;
+            };
+
+            updateDisplay();
+            timerInterval = setInterval(updateDisplay, 1000);
+        }
+
+        function getCurrentTimeStr() {
+            return document.getElementById('mission-timer').textContent || '00:00';
+        }
+
+        // Logging Funktion
+        function addLogEntry(tabTitle, question, result) {
+            const entry = {
+                time: getCurrentTimeStr(),
+                tab: tabTitle,
+                question: question,
+                result: result
+            };
+            logEntries.push(entry);
+            sessionStorage.setItem('mission-logs', JSON.stringify(logEntries));
+        }
+
+        // PDF-Export
+        function exportPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+
+            // Titel & Metadaten
+            doc.setFontSize(18);
+            doc.setTextColor(30, 41, 59);
+            doc.text("Einsatzprotokoll - RD-Simulation", 14, 20);
+
+            doc.setFontSize(10);
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Erstellt am: ${new Date().toLocaleString('de-DE')}  |  Gesamtdauer: ${getCurrentTimeStr()}`, 14, 28);
+
+            const sections = [
+                "Allgemein",
+                "1-2-3-4 Ersteinschätzung",
+                "cABCDE",
+                "SAMPLER & OPQRST",
+                "Maßnahmen",
+                "Medikamente & Infusionen"
+            ];
+
+            let currentY = 36;
+
+            sections.forEach(secName => {
+                const filtered = logEntries.filter(e => e.tab === secName);
+                if (filtered.length > 0) {
+                    if (currentY > 260) {
+                        doc.addPage();
+                        currentY = 20;
+                    }
+
+                    doc.setFontSize(13);
+                    doc.setFont(undefined, 'bold');
+                    doc.setTextColor(15, 23, 42);
+                    doc.text(secName, 14, currentY);
+                    currentY += 4;
+
+                    const tableRows = filtered.map(item => [item.time, item.question, item.result]);
+
+                    doc.autoTable({
+                        startY: currentY,
+                        head: [['Zeit', 'Untersuchung / Maßnahme', 'Ergebnis / Detail']],
+                        body: tableRows,
+                        theme: 'striped',
+                        headStyles: { fillColor: [37, 99, 235], fontStyle: 'bold' },
+                        styles: { fontSize: 9, cellPadding: 2.5 },
+                        columnStyles: {
+                            0: { cellWidth: 22, fontStyle: 'bold', textColor: [220, 38, 38] },
+                            1: { cellWidth: 70 },
+                            2: { cellWidth: 'auto' }
+                        },
+                        margin: { left: 14, right: 14 }
+                    });
+
+                    currentY = doc.lastAutoTable.finalY + 10;
+                }
+            });
+
+            // Falls gar nichts erhoben wurde
+            if (logEntries.length === 0) {
+                doc.setFontSize(11);
+                doc.setTextColor(150, 150, 150);
+                doc.text("Es wurden noch keine Befunde oder Maßnahmen dokumentiert.", 14, currentY);
+            }
+
+            doc.save(`RD-Protokoll_${new Date().toISOString().slice(0,10)}_${getCurrentTimeStr().replace(':','-')}.pdf`);
+        }
+
+        // Nachforderung Modal Logik
+        function initModalLogic() {
+            const modal = document.getElementById('modal-nachforderung');
+            const btnOpen = document.getElementById('btn-open-nachforderung');
+            const btnClose = document.getElementById('btn-close-modal');
+            const btnCancel = document.getElementById('btn-cancel-modal');
+            const btnSave = document.getElementById('btn-save-modal');
+            const reasonContainer = document.getElementById('reason-container');
+            const resButtons = document.querySelectorAll('.res-btn');
+            const reasonButtons = document.querySelectorAll('.reason-btn');
+
+            const checkValidity = () => {
+                if (selectedResource === 'Tragehilfe') {
+                    btnSave.disabled = false;
+                    btnSave.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else if ((selectedResource === 'Single Responder' || selectedResource === 'NEF') && selectedReason) {
+                    btnSave.disabled = false;
+                    btnSave.classList.remove('opacity-50', 'cursor-not-allowed');
+                } else {
+                    btnSave.disabled = true;
+                    btnSave.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+            };
+
+            btnOpen.onclick = () => {
+                selectedResource = null;
+                selectedReason = null;
+                resButtons.forEach(b => b.className = "res-btn p-4 border-2 border-slate-200 rounded-xl font-semibold text-center hover:border-red-500 hover:bg-red-50 focus:outline-none btn-transition");
+                reasonButtons.forEach(b => b.className = "reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition");
+                reasonContainer.classList.add('opacity-40', 'pointer-events-none');
+                checkValidity();
+                modal.classList.remove('hidden');
+            };
+
+            const closeModal = () => modal.classList.add('hidden');
+            btnClose.onclick = closeModal;
+            btnCancel.onclick = closeModal;
+
+            resButtons.forEach(btn => {
+                btn.onclick = () => {
+                    resButtons.forEach(b => b.className = "res-btn p-4 border-2 border-slate-200 rounded-xl font-semibold text-center hover:border-red-500 hover:bg-red-50 focus:outline-none btn-transition");
+                    btn.className = "res-btn p-4 border-2 border-red-600 bg-red-50 text-red-700 rounded-xl font-semibold text-center focus:outline-none btn-transition shadow-sm";
+                    selectedResource = btn.dataset.resource;
+
+                    if (selectedResource === 'Tragehilfe') {
+                        reasonContainer.classList.add('opacity-40', 'pointer-events-none');
+                        selectedReason = null;
+                        reasonButtons.forEach(b => b.className = "reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition");
+                    } else {
+                        reasonContainer.classList.remove('opacity-40', 'pointer-events-none');
+                    }
+                    checkValidity();
+                };
+            });
+
+            reasonButtons.forEach(btn => {
+                btn.onclick = () => {
+                    reasonButtons.forEach(b => b.className = "reason-btn p-3 border border-slate-200 rounded-lg text-left text-sm font-semibold hover:bg-red-50 hover:border-red-400 focus:outline-none btn-transition");
+                    btn.className = "reason-btn p-3 border-2 border-red-600 bg-red-50 text-red-700 rounded-lg text-left text-sm font-semibold focus:outline-none btn-transition shadow-sm";
+                    selectedReason = btn.dataset.reason;
+                    checkValidity();
+                };
+            });
+
+            btnSave.onclick = () => {
+                const label = selectedReason ? `${selectedResource} (${selectedReason})` : selectedResource;
+                sessionStorage.setItem('active-nachforderung', label);
+                updateNachforderungDisplay(label);
+                addLogEntry("Allgemein", "Nachforderung alarmiert", label);
+                closeModal();
+            };
+        }
+
+        function restoreNachforderung() {
+            const saved = sessionStorage.getItem('active-nachforderung');
+            if (saved) updateNachforderungDisplay(saved);
+        }
+
+        function updateNachforderungDisplay(text) {
+            const displayLabel = document.getElementById('status-nachforderung');
+            const displayText = document.getElementById('status-text-nachforderung');
+            displayText.textContent = text;
+            displayLabel.classList.remove('hidden');
+        }
+
+        // Options-Modal Logik (Untermenüs)
+        function initOptionsModalLogic() {
+            const modal = document.getElementById('modal-options');
+            const btnClose = document.getElementById('btn-close-options-modal');
+            const btnCancel = document.getElementById('btn-cancel-options-modal');
+
+            const closeModal = () => modal.classList.add('hidden');
+            btnClose.onclick = closeModal;
+            btnCancel.onclick = closeModal;
+        }
+
+        function openOptionsModal(btnData, uniqueId, buttonEl, iconEl, textSpan, checkSpan, activeDataTitle) {
+            const modal = document.getElementById('modal-options');
+            const title = document.getElementById('options-modal-title');
+            const container = document.getElementById('options-container');
+
+            title.innerHTML = `<i class="fas ${btnData.icon} mr-1"></i> ${btnData.q}`;
+            container.innerHTML = '';
+
+            btnData.options.forEach(opt => {
+                const optBtn = document.createElement('button');
+                optBtn.className = "w-full text-left p-4 border-2 border-slate-200 rounded-xl font-semibold text-base hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition bg-white text-slate-800";
+                optBtn.textContent = opt;
+
+                optBtn.onclick = () => {
+                    sessionStorage.setItem(uniqueId, opt);
+                    addLogEntry(activeDataTitle, btnData.q, opt);
+
+                    buttonEl.className = styleClasses.buttonToggled;
+                    if (btnData.fullWidth) buttonEl.classList.add('md:col-span-2', 'lg:col-span-3');
+
+                    iconEl.className = `fas ${btnData.icon} text-2xl w-8 text-center text-emerald-600`;
+                    textSpan.textContent = `${btnData.q}: ${opt}`;
+                    checkSpan.innerHTML = '<i class="fas fa-check"></i>';
+
+                    modal.classList.add('hidden');
+                };
+
+                container.appendChild(optBtn);
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        // Medikamenten-Modal Logik
+        let activeMedContext = null;
+
+        function initMedicationModalLogic() {
+            const modal = document.getElementById('modal-medication');
+            const btnClose = document.getElementById('btn-close-med-modal');
+            const btnCancel = document.getElementById('btn-cancel-med-modal');
+            const btnSave = document.getElementById('btn-save-med-modal');
+            const btnDelete = document.getElementById('btn-delete-med');
+            const doseInput = document.getElementById('med-dose-input');
+            const routeBtns = document.querySelectorAll('.med-route-btn');
+            const unitBtns = document.querySelectorAll('.med-unit-btn');
+            const previewBadge = document.getElementById('med-preview-badge');
+
+            let currentRoute = null;
+            let currentUnit = null;
+
+            const updatePreviewAndValidity = () => {
+                const doseVal = doseInput.value.trim();
+                const hasValidDose = doseVal !== '' && !isNaN(doseVal) && parseFloat(doseVal) > 0;
+
+                if (currentRoute && currentUnit && hasValidDose) {
+                    btnSave.disabled = false;
+                    btnSave.classList.remove('opacity-50', 'cursor-not-allowed');
+                    previewBadge.textContent = `${doseVal} ${currentUnit} ${currentRoute}`;
+                    previewBadge.className = 'font-bold text-emerald-700 text-sm bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200';
+                } else {
+                    btnSave.disabled = true;
+                    btnSave.classList.add('opacity-50', 'cursor-not-allowed');
+                    const parts = [];
+                    if (doseVal) parts.push(doseVal);
+                    if (currentUnit) parts.push(currentUnit);
+                    if (currentRoute) parts.push(currentRoute);
+                    previewBadge.textContent = parts.length > 0 ? parts.join(' ') : 'Noch unvollständig';
+                    previewBadge.className = 'font-bold text-slate-500 text-sm italic';
+                }
+            };
+
+            routeBtns.forEach(btn => {
+                btn.onclick = () => {
+                    routeBtns.forEach(b => b.className = "med-route-btn py-3 px-2 border-2 border-slate-200 rounded-xl font-bold text-center hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-sm md:text-base text-slate-700");
+                    btn.className = "med-route-btn py-3 px-2 border-2 border-emerald-600 bg-emerald-50 text-emerald-800 rounded-xl font-bold text-center focus:outline-none btn-transition text-sm md:text-base shadow-sm";
+                    currentRoute = btn.dataset.route;
+                    updatePreviewAndValidity();
+                };
+            });
+
+            unitBtns.forEach(btn => {
+                btn.onclick = () => {
+                    unitBtns.forEach(b => b.className = "med-unit-btn py-3.5 border-2 border-slate-200 rounded-xl font-bold text-base hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-slate-700");
+                    btn.className = "med-unit-btn py-3.5 border-2 border-emerald-600 bg-emerald-50 text-emerald-800 rounded-xl font-bold text-base focus:outline-none btn-transition shadow-sm";
+                    currentUnit = btn.dataset.unit;
+                    updatePreviewAndValidity();
+                };
+            });
+
+            doseInput.oninput = updatePreviewAndValidity;
+
+            const closeModal = () => {
+                modal.classList.add('hidden');
+                activeMedContext = null;
+            };
+
+            btnClose.onclick = closeModal;
+            btnCancel.onclick = closeModal;
+
+            btnDelete.onclick = () => {
+                if (!activeMedContext) return;
+                const { uniqueId, btnData, buttonEl, iconEl, textSpan, checkSpan, activeDataTitle } = activeMedContext;
+
+                sessionStorage.removeItem(uniqueId);
+                addLogEntry(activeDataTitle, btnData.q, "Gabe gelöscht / widerrufen");
+
+                buttonEl.className = styleClasses.buttonNormal;
+                iconEl.className = `fas ${btnData.icon} text-2xl w-8 text-center text-blue-600`;
+                textSpan.textContent = btnData.q;
+                checkSpan.innerHTML = '';
+
+                closeModal();
+            };
+
+            btnSave.onclick = () => {
+                if (!activeMedContext) return;
+                const { uniqueId, btnData, buttonEl, iconEl, textSpan, checkSpan, activeDataTitle } = activeMedContext;
+                const doseVal = doseInput.value.trim();
+                const medResult = `${doseVal} ${currentUnit} ${currentRoute}`;
+
+                sessionStorage.setItem(uniqueId, medResult);
+                addLogEntry(activeDataTitle, btnData.q, medResult);
+
+                buttonEl.className = styleClasses.buttonToggled;
+                iconEl.className = `fas ${btnData.icon} text-2xl w-8 text-center text-emerald-600`;
+                textSpan.textContent = `${btnData.q}: ${medResult}`;
+                checkSpan.innerHTML = '<i class="fas fa-check"></i>';
+
+                closeModal();
+            };
+
+            window.openMedModalInternal = function(context) {
+                activeMedContext = context;
+                const title = document.getElementById('med-modal-title');
+                title.innerHTML = `<i class="fas ${context.btnData.icon} mr-1"></i> ${context.btnData.q}`;
+
+                const existingVal = sessionStorage.getItem(context.uniqueId);
+
+                currentRoute = null;
+                currentUnit = null;
+                doseInput.value = '';
+                routeBtns.forEach(b => b.className = "med-route-btn py-3 px-2 border-2 border-slate-200 rounded-xl font-bold text-center hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-sm md:text-base text-slate-700");
+                unitBtns.forEach(b => b.className = "med-unit-btn py-3.5 border-2 border-slate-200 rounded-xl font-bold text-base hover:border-emerald-500 hover:bg-emerald-50 focus:outline-none btn-transition text-slate-700");
+
+                if (existingVal && existingVal !== 'false') {
+                    btnDelete.classList.remove('hidden');
+                    const parts = existingVal.split(' ');
+                    if (parts.length >= 3) {
+                        doseInput.value = parts[0];
+                        currentUnit = parts[1];
+                        currentRoute = parts[2];
+
+                        const matchingRouteBtn = Array.from(routeBtns).find(b => b.dataset.route === currentRoute);
+                        if (matchingRouteBtn) {
+                            matchingRouteBtn.className = "med-route-btn py-3 px-2 border-2 border-emerald-600 bg-emerald-50 text-emerald-800 rounded-xl font-bold text-center focus:outline-none btn-transition text-sm md:text-base shadow-sm";
+                        }
+
+                        const matchingUnitBtn = Array.from(unitBtns).find(b => b.dataset.unit === currentUnit);
+                        if (matchingUnitBtn) {
+                            matchingUnitBtn.className = "med-unit-btn py-3.5 border-2 border-emerald-600 bg-emerald-50 text-emerald-800 rounded-xl font-bold text-base focus:outline-none btn-transition shadow-sm";
+                        }
+                    }
+                } else {
+                    btnDelete.classList.add('hidden');
+                }
+
+                updatePreviewAndValidity();
+                modal.classList.remove('hidden');
+                setTimeout(() => doseInput.focus(), 100);
+            };
+        }
+
+        function openMedicationModal(btnData, uniqueId, buttonEl, iconEl, textSpan, checkSpan, activeDataTitle) {
+            window.openMedModalInternal({
+                btnData, uniqueId, buttonEl, iconEl, textSpan, checkSpan, activeDataTitle
+            });
+        }
+
+        // Reset Simulation Logik
+        function initResetLogic() {
+            const resetBtn = document.getElementById('btn-reset-all');
+            const resetModal = document.getElementById('modal-reset');
+            const cancelBtn = document.getElementById('btn-cancel-reset');
+            const confirmBtn = document.getElementById('btn-confirm-reset');
+
+            resetBtn.onclick = () => resetModal.classList.remove('hidden');
+            cancelBtn.onclick = () => resetModal.classList.add('hidden');
+
+            confirmBtn.onclick = () => {
+                sessionStorage.clear();
+                window.location.reload();
+            };
+        }
+
+        // Tabs rendern
+        function renderTabs() {
+            const tabContainer = document.getElementById('tab-container');
+            tabContainer.innerHTML = '';
+
+            appData.forEach(tab => {
+                const btn = document.createElement('button');
+                btn.className = (tab.id === currentTabId) ? styleClasses.tabActive : styleClasses.tabNormal;
+                btn.textContent = tab.title;
+
+                btn.onclick = () => {
+                    if (currentTabId !== tab.id) {
+                        currentTabId = tab.id;
+                        renderTabs();
+                        renderContent();
+                    }
+                };
+
+                tabContainer.appendChild(btn);
+            });
+        }
+
+        // Inhalt rendern
+        function renderContent() {
+            const contentContainer = document.getElementById('tab-content');
+            const activeData = appData.find(d => d.id === currentTabId);
+            const traumaBanner = document.getElementById('trauma-toggle-container');
+
+            contentContainer.innerHTML = '';
+
+            // Trauma Toggle nur im cABCDE Tab anzeigen
+            if (activeData.hasTraumaToggle) {
+                traumaBanner.classList.remove('hidden');
+                const toggle = document.getElementById('trauma-toggle');
+                toggle.checked = sessionStorage.getItem('trauma-toggle-state') === 'true';
+
+                toggle.onchange = (e) => {
+                    const isChecked = e.target.checked;
+                    sessionStorage.setItem('trauma-toggle-state', isChecked ? 'true' : 'false');
+                    addLogEntry("cABCDE", "Trauma-Modus gewechselt", isChecked ? "Aktiviert (Trauma)" : "Deaktiviert (Internistisch)");
+                    renderContent();
+                };
+            } else {
+                traumaBanner.classList.add('hidden');
+            }
+
+            // Abschnitte & Schaltflächen generieren
+            activeData.sections.forEach(sec => {
+                const secCard = document.createElement('section');
+                secCard.className = 'bg-white rounded-2xl p-4 md:p-6 shadow-sm border border-slate-200';
+
+                const secTitle = document.createElement('h3');
+                secTitle.className = 'text-lg font-bold text-slate-800 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2';
+                secTitle.innerHTML = `<span class="w-2.5 h-2.5 rounded-full bg-blue-600 inline-block"></span>${sec.title}`;
+                secCard.appendChild(secTitle);
+
+                const gridDiv = document.createElement('div');
+                gridDiv.className = 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4';
+
+                sec.buttons.forEach((btnData, index) => {
+                    const button = document.createElement('button');
+                    const uniqueId = `btn-${activeData.id}-${sec.title}-${index}`.replace(/[^a-zA-Z0-9-]/g, '-');
+                    button.dataset.uniqueId = uniqueId;
+
+                    const storedValue = sessionStorage.getItem(uniqueId);
+                    const isToggled = storedValue && storedValue !== 'false';
+                    const isTrauma = sessionStorage.getItem('trauma-toggle-state') === 'true';
+
+                    const disabledDueToTrauma = btnData.requiresTrauma && !isTrauma;
+
+                    if (disabledDueToTrauma) {
+                        button.className = styleClasses.buttonDisabled;
+                        button.disabled = true;
+                    } else if (isToggled) {
+                        button.className = styleClasses.buttonToggled;
+                    } else {
+                        button.className = styleClasses.buttonNormal;
+                    }
+
+                    if (btnData.fullWidth) {
+                        button.classList.add('md:col-span-2', 'lg:col-span-3');
+                    }
+
+                    const iconEl = document.createElement('i');
+                    const iconColor = disabledDueToTrauma ? 'text-slate-400' : (isToggled ? 'text-emerald-600' : 'text-blue-600');
+                    iconEl.className = `fas ${btnData.icon} text-2xl w-8 text-center ${iconColor}`;
+                    button.appendChild(iconEl);
+
+                    const textSpan = document.createElement('span');
+                    textSpan.className = "flex-1";
+
+                    if (isToggled && !disabledDueToTrauma) {
+                        if (btnData.isMedication) {
+                            textSpan.textContent = `${btnData.q}: ${storedValue}`;
+                        } else if (btnData.options) {
+                            textSpan.textContent = `${btnData.q}: ${storedValue}`;
+                        } else {
+                            textSpan.textContent = btnData.a;
+                        }
+                    } else {
+                        textSpan.textContent = btnData.q;
+                    }
+                    button.appendChild(textSpan);
+
+                    const checkSpan = document.createElement('span');
+                    checkSpan.innerHTML = (isToggled && !disabledDueToTrauma) ? '<i class="fas fa-check"></i>' : '';
+                    checkSpan.className = 'text-xl ml-2 opacity-80';
+                    button.appendChild(checkSpan);
+
+                    button.onclick = () => {
+                        // Bei Medikamenten: Spezielles Dosierungs-Modal öffnen
+                        if (btnData.isMedication) {
+                            openMedicationModal(btnData, uniqueId, button, iconEl, textSpan, checkSpan, activeData.title);
+                            return;
+                        }
+
+                        const currentStored = sessionStorage.getItem(uniqueId);
+                        const currentlyToggled = currentStored && currentStored !== 'false';
+
+                        // Bei Buttons mit Optionen und noch nicht aktivem Status: Modal öffnen
+                        if (!currentlyToggled && btnData.options) {
+                            openOptionsModal(btnData, uniqueId, button, iconEl, textSpan, checkSpan, activeData.title);
+                            return;
+                        }
+
+                        const newState = !currentlyToggled;
+
+                        if (newState) {
+                            sessionStorage.setItem(uniqueId, 'true');
+                            addLogEntry(activeData.title, btnData.q, btnData.a);
+                        } else {
+                            sessionStorage.setItem(uniqueId, 'false');
+                            addLogEntry(activeData.title, btnData.q, "Zurückgesetzt (widerrufen)");
+                        }
+
+                        button.className = newState ? styleClasses.buttonToggled : styleClasses.buttonNormal;
+                        if (btnData.fullWidth) button.classList.add('md:col-span-2', 'lg:col-span-3');
+
+                        iconEl.className = `fas ${btnData.icon} text-2xl w-8 text-center ${newState ? 'text-emerald-600' : 'text-blue-600'}`;
+                        textSpan.textContent = newState ? btnData.a : btnData.q;
+                        checkSpan.innerHTML = newState ? '<i class="fas fa-check"></i>' : '';
+                    };
+
+                    gridDiv.appendChild(button);
+                });
+
+                secCard.appendChild(gridDiv);
+                contentContainer.appendChild(secCard);
+            });
+        }
+    </script>
+</body>
+</html>
