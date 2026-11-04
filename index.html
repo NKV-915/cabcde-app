@@ -59,8 +59,20 @@
                 </div>
             </div>
 
-            <!-- Schnellaktionen (Nachforderung, PDF, Reset) -->
+            <!-- Schnellaktionen (Szenario, Nachforderung, PDF, Reset) -->
             <div class="flex items-center gap-2 flex-wrap">
+                <!-- Aktives Szenario Badge -->
+                <div id="status-scenario" class="flex items-center gap-1.5 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs font-bold shadow-sm">
+                    <i class="fas fa-clipboard-user text-blue-600"></i>
+                    <span id="status-scenario-text">Kein Szenario gewählt</span>
+                </div>
+
+                <!-- Button: Szenario wählen / wechseln -->
+                <button id="btn-open-scenarios" class="flex items-center gap-2 px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl font-semibold text-sm shadow transition-colors">
+                    <i class="fas fa-folder-open text-base"></i>
+                    <span>Fallbeispiel</span>
+                </button>
+
                 <!-- Status Badge für aktive Nachforderung -->
                 <div id="status-nachforderung" class="hidden flex items-center gap-1.5 px-3 py-2 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs font-bold">
                     <i class="fas fa-bullhorn text-red-600 animate-pulse"></i>
@@ -116,6 +128,44 @@
             <!-- Inhalt wird dynamisch gerendert -->
         </div>
     </main>
+
+    <!-- Fallbeispiel / Szenario Modal -->
+    <div id="modal-scenario" class="hidden fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-3 md:p-6 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div class="bg-slate-900 p-4 text-white flex justify-between items-center shadow-md">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center text-white">
+                        <i class="fas fa-clipboard-list text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-lg md:text-xl font-bold">Fallbeispiel für Simulation auswählen</h3>
+                        <p class="text-xs text-slate-400">Lädt Ersteinschätzung, cABCDE, Vitalwerte & SAMPLER-Anamnese</p>
+                    </div>
+                </div>
+                <button id="btn-close-scenario-modal" class="text-slate-400 hover:text-white text-3xl leading-none px-2 focus:outline-none">&times;</button>
+            </div>
+
+            <!-- Suchfeld -->
+            <div class="p-3 bg-slate-50 border-b border-slate-200">
+                <div class="relative">
+                    <i class="fas fa-search absolute left-3.5 top-3.5 text-slate-400 text-sm"></i>
+                    <input type="text" id="scenario-search" placeholder="Fallbeispiel, Code oder Patient suchen..." class="w-full bg-white border border-slate-300 rounded-xl pl-10 pr-4 py-2 text-sm focus:border-blue-500 focus:outline-none">
+                </div>
+            </div>
+
+            <!-- Liste der Szenarien -->
+            <div class="p-4 md:p-6 overflow-y-auto flex-1 bg-slate-100">
+                <div id="scenario-cards-container" class="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    <!-- Dynamisch via JS befüllt -->
+                </div>
+            </div>
+
+            <div class="p-3.5 bg-white border-t border-slate-200 flex justify-between items-center">
+                <span class="text-xs text-slate-500 font-medium">13 Notfallszenarien verfügbar</span>
+                <button id="btn-cancel-scenario-modal" class="px-5 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 text-sm">Schließen</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Nachforderung Modal -->
     <div id="modal-nachforderung" class="hidden fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -263,8 +313,792 @@
 
     <!-- Logik & Anwendungsdaten -->
     <script>
-        // Datenstruktur der Rettungsdienst-Simulation
-        const appData = [
+        // 13 Notfall-Szenarien aus Leitstelle, Monitor & Arztbriefen
+        const scenariosData = {
+            'ACS': {
+                code: '10D05',
+                badge: 'DELTA',
+                badgeColor: 'bg-red-600 text-white',
+                name: 'Thoraxschmerz / ACS',
+                patient: { name: 'Bauer, Franz', age: '64 J.', sex: 'männlich', weight: 'ca. 82 kg', geb: '12.05.1961' },
+                isTrauma: false,
+                ftext: 'klagt über akuten Brustschmerz, Atemnot, kaltschweißig lt. Beruferin',
+                answers: {
+                    sicher: 'Ja, Einsatzstelle in Wohnung gesichert',
+                    psa: 'Ja, PSA vollständig angelegt',
+                    mechanismus: 'Nein, internistischer Notfall',
+                    blutung_erst: 'Keine lebensbedrohliche Blutung sichtbar',
+                    haltung: 'Aufrecht sitzend im Sessel, Hand auf das Brustbein gepresst',
+                    spontanbew: 'Ja, zielgerichtet, ängstlich und unruhig',
+                    verletzungen: 'Keine offensichtlichen Traumazeichen',
+                    haut_erst: 'Blass, kaltschweißig, kühle Peripherie',
+                    abgang: 'Nein, kein Erbrechen oder Ausscheidungen',
+                    wasb: 'W - Patient ist wach, ansprechbar und orientiert',
+                    leitsymptom: 'Akute retrosternale Brustenge / Vernichtungsschmerz',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Frei, keine Verlegung',
+                    atemgeraeusche: 'Keine pathologischen Atemgeräusche (kein Stridor)',
+                    hws: 'Nicht indiziert (kein Trauma)',
+                    zyanose: 'Keine Zyanose erkennbar',
+                    atemmuster: 'Tachypnoeisch, regelmäßige Atmung',
+                    thoraxexkursion: 'Seitengleich und seitensymmetrisch',
+                    af: '18 / min (leicht tachypnoeisch)',
+                    atemtiefe: 'Oberflächlich schmerzbedingt geschont',
+                    ahm: 'Geringer Einsatz der Atemhilfsmuskulatur',
+                    spo2: '96% bei Raumluft',
+                    auskultation: 'Vesikuläres Atemgeräusch bds., keine Rasselgeräusche',
+                    atmung_suff: 'Ja, Atmung ist aktuell suffizient',
+                    haut_c: 'Blass, kalt und feucht (kaltschweißig)',
+                    puls: 'Kräftig, rhythmisch, ca. 85 / min',
+                    rekap: '2-3 Sekunden (zentral leicht verzögert)',
+                    stu: 'O.B. (Internistischer Notfall, kein Trauma)',
+                    zops: '4-fach orientiert (Zeit, Ort, Person, Situation)',
+                    pupillen: 'Isokor, mittelweit, prompte Lichtreaktion bds.',
+                    dms: 'DMS an allen 4 Extremitäten seitengleich intakt',
+                    fast: 'Negativ (kein Hinweis auf Apoplex)',
+                    gcs: '15 Punkte (E4 V5 M6)',
+                    abdomen: 'Weich, kein Druckschmerz, Darmgeräusche normal',
+                    weitere_untersuchung: 'BZ 130 mg/dl, Temp 36.8 °C, RR 150/95 mmHg, EKG: STEMI (Hebungen V1-V4)',
+                    symptome: 'Retrosternaler Druckschmerz, Dyspnoe, vegetative Begleitsymptome (Übelkeit, Schwitzen)',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Thrombo ASS 100mg (1-0-0-0), Atorvastatin 40mg (0-0-0-1), Ramipril 5mg (1-0-0-0), Bisoprolol 5mg (1-0-0-0), Nitrolingual Spray b.B.',
+                    geschichte: 'KHK (2-Gefäß-Erkrankung, Z.n. DES in RIVA 11/2022, Kontroll-Koro 11/2025 o.B.), Art. Hypertonie Grad II, Hyperlipidämie, Nikotin (35 py)',
+                    ins_outs: 'Frühstück vor ca. 2 Std. (Kaffee & Toast), normale Miktion',
+                    ereignisse: 'Schmerz trat plötzlich in Ruhe beim Zeitunglesen auf, eigener Hub Nitro brachte keine Besserung',
+                    risikofaktoren: 'Bekannte KHK, Hypertonie, Nikotinabusus (35 pack years), Hyperlipidämie',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Akuter Beginn vor ca. 45 Minuten in Ruhe',
+                    opqrst_p: 'Weder bewegungs- noch atemabhängig, kein Ansprechen auf Nitrospray',
+                    opqrst_q: 'Dumpf, drückend wie ein Stein auf der Brust, massives Engegefühl',
+                    opqrst_r: 'Retrosternal mit deutlicher Ausstrahlung in linken Arm und Unterkiefer',
+                    opqrst_s: 'NRS 8 / 10 (Starker Vernichtungsschmerz)',
+                    opqrst_t: 'Seit 45 Minuten kontinuierlich anhaltend'
+                }
+            },
+            'APOPLEX': {
+                code: '28C01',
+                badge: 'CHARLIE',
+                badgeColor: 'bg-amber-600 text-white',
+                name: 'Apoplex / Schlaganfall',
+                patient: { name: 'Kowalski, Maria', age: '73 J.', sex: 'weiblich', weight: 'ca. 68 kg', geb: '23.08.1952' },
+                isTrauma: false,
+                ftext: 'hängender Mundwinkel rechts, Sprachstörung seit ca. 1/2 Stunde',
+                answers: {
+                    sicher: 'Ja, Einsatzstelle in Wohnung sicher',
+                    psa: 'Ja, PSA ausreichend',
+                    mechanismus: 'Nein, internistisch / neurologisch',
+                    blutung_erst: 'Keine lebensbedrohliche Blutung',
+                    haltung: 'Auf Sofa liegend, Parese der rechten Körperhälfte',
+                    spontanbew: 'Nur linksseitig zielgerichtete Bewegungen',
+                    verletzungen: 'Keine offensichtlichen Traumazeichen',
+                    haut_erst: 'Normal durchblutet, trocken, warm',
+                    abgang: 'Nein, kein Abgang',
+                    wasb: 'W - Patientin ist wach, jedoch fokal verlangsamt & aphasisch',
+                    leitsymptom: 'Akute Hemiparese rechts und motorische Aphasie',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Frei, Schluckreflex eingeschränkt / gefährdet',
+                    atemgeraeusche: 'Keine pathologischen Geräusche',
+                    hws: 'Nicht indiziert',
+                    zyanose: 'Keine Zyanose',
+                    atemmuster: 'Regelmäßig, eupnoisch',
+                    thoraxexkursion: 'Seitengleich',
+                    af: '14 / min (Normfrequent)',
+                    atemtiefe: 'Normal, ausreichend',
+                    ahm: 'Keine AHM im Einsatz',
+                    spo2: '97% bei Raumluft',
+                    auskultation: 'Vesikuläres Atemgeräusch bds.',
+                    atmung_suff: 'Ja, Atmung ist suffizient',
+                    haut_c: 'Warm, rosig, trocken',
+                    puls: 'Arrhythmisch, kräftig, ca. 92 / min (Vorhofflimmern)',
+                    rekap: '< 2 Sekunden',
+                    stu: 'O.B. (Kein Trauma)',
+                    zops: 'Zeitlich & situativ desorientiert, Person & Ort eingeschränkt intakt',
+                    pupillen: 'Isokor, mittelweit, Lichtreaktion bds. erhalten',
+                    dms: 'Armhalteversuch: Absinken Arm re; Beinhalteversuch: Parese Bein re',
+                    fast: 'FAST+ POSITIV! Face (Mundastparese re), Arm (Hemiparese re), Speech (Aphasie)',
+                    gcs: '13 Punkte (E4 V4 M5)',
+                    abdomen: 'Weich, indolent',
+                    weitere_untersuchung: 'BZ 115 mg/dl, Temp 37.1 °C, RR 195/110 mmHg, EKG: Vorhofflimmern (Arrhythmia absoluta)',
+                    symptome: 'Plötzliche Schwäche rechter Arm/Bein, Unvermögen Worte zu formen',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Eliquis (Apixaban) 5mg (1-0-1-0), Candesartan 8mg (1-0-0-0), Amlodipin 5mg (0-0-1-0), Pantoprazol 20mg (1-0-0-0), Oleovit D3',
+                    geschichte: 'Z.n. TIA im Stromgebiet der ACM links (04/2025, Vollremission), paroxysmales Vorhofflimmern (CHA2DS2-VASc 4), Hypertonie, Osteoporose',
+                    ins_outs: 'Kaffee & Semmel vor ca. 3 Std., heute noch kein Stuhlgang',
+                    ereignisse: 'Tochter bemerkte beim Telefonieren plötzliche Sprachstörung vor ca. 30 Minuten (Last Seen Normal vor 35 Min.)',
+                    risikofaktoren: 'Bekanntes Vorhofflimmern, Z.n. TIA, arterielle Hypertonie, Alter 73 J.',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Akutes fokal-neurologisches Defizit vor 30 Minuten',
+                    opqrst_p: 'Keine Schmerzen, keine Beeinflussbarkeit',
+                    opqrst_q: 'Schmerzlos, Gefühl von "Taubheit und Lähmung"',
+                    opqrst_r: 'Keine Schmerzausstrahlung',
+                    opqrst_s: 'NRS 0 / 10 (kein Schmerz, ausgeprägter Funktionsverlust)',
+                    opqrst_t: 'Seit 30 Minuten unverändert bestehend (Time-Window offen!)'
+                }
+            },
+            'ATEMNOT': {
+                code: '06D02',
+                badge: 'DELTA',
+                badgeColor: 'bg-sky-600 text-white',
+                name: 'Schwere Dyspnoe / COPD',
+                patient: { name: 'Gruber, Johann', age: '57 J.', sex: 'männlich', weight: 'ca. 75 kg', geb: '14.11.1968' },
+                isTrauma: false,
+                ftext: 'Atemnot seit dem Morgen, bekannte COPD, zunehmend erschöpft',
+                answers: {
+                    sicher: 'Ja, Einsatzstelle in Wohnung gesichert',
+                    psa: 'Ja, PSA ausreichend (FFP2/Handschuhe)',
+                    mechanismus: 'Nein, pulmonale Exazerbation',
+                    blutung_erst: 'Keine Blutung vorhanden',
+                    haltung: 'Kutschersitz auf Bettkante, aufgestützte Arme',
+                    spontanbew: 'Ja, angestrengtes Ringen nach Luft',
+                    verletzungen: 'Keine Verletzungen',
+                    haut_erst: 'Blass-zyanotisch, kaltschweißig an Stirn',
+                    abgang: 'Nein, produktiver Husten mit gelblichem Sputum',
+                    wasb: 'W - Wach, antwortet nur in Ein-Wort-Sätzen',
+                    leitsymptom: 'Massive Ruhedyspnoe, Erstickungsgefühl',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Frei, aber durch Schleim & Bronchospasmus eingeengt',
+                    atemgeraeusche: 'Hörbares exspiratorisches Giemen und Pfeifen',
+                    hws: 'Nicht indiziert',
+                    zyanose: 'Zentrale Zyanose an Lippen und Akren',
+                    atemmuster: 'Tachypnoeisch, deutlich verlängertes Exspirium, Lippenbremse',
+                    thoraxexkursion: 'Geringe Thoraxexkursion bei Lungenüberblähung',
+                    af: '28 / min (Schwere Tachypnoe)',
+                    atemtiefe: 'Oberflächlich, forciert',
+                    ahm: 'Massiver Einsatz der Atemhilfsmuskulatur (Mm. scaleni, SCM)',
+                    spo2: '84% bei Raumluft',
+                    auskultation: 'Bds. diffuse Giemen, Brummen und basal feuchte RGs',
+                    atmung_suff: 'Insuffizient! Erschöpfungsgefahr, O2-Gabe & Inhalation indiziert',
+                    haut_c: 'Blass-grau, zyanotisch, feucht',
+                    puls: 'Tachykard, ca. 118 / min, regelmäßig',
+                    rekap: '3 Sekunden',
+                    stu: 'O.B. (Kein Trauma)',
+                    zops: '4-fach orientiert, durch Hypoxie leicht unruhig/ängstlich',
+                    pupillen: 'Isokor, mittelweit',
+                    dms: 'Intakt, zyanotische Fingernägel',
+                    fast: 'Negativ',
+                    gcs: '15 Punkte (E4 V5 M6)',
+                    abdomen: 'Meteoristisch aufgetrieben, sonst o.B.',
+                    weitere_untersuchung: 'BZ 120 mg/dl, Temp 37.4 °C, RR 160/95 mmHg, etCO2 56 mmHg (Hyperkapnie)',
+                    symptome: 'Schwerste Atemnot, produktiver Husten mit zähem Auswurf, Engegefühl',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Trelegy Ellipta (1 Hub morgens), Prednisolon 5mg (1-0-0-0), Torasemid 10mg (1-0-0-0), Amlodipin 5mg (0-0-1-0), Ventolin (Salbutamol) b.B.',
+                    geschichte: 'Akute infektexazerbierte COPD (AECOPD GOLD III, Gruppe E), chron. respiratorische Partialinsuffizienz, Pulmonale Hypertonie, Raucher (45 py)',
+                    ins_outs: 'Wenig Appetit, Tee am Morgen, Miktion unauffällig',
+                    ereignisse: 'Seit heute früh zunehmende Atemnot nach Erkältung, Salbutamol-Spray 4x inhaliert ohne Entlastung',
+                    risikofaktoren: 'Schwere COPD GOLD III, aktiver Raucher (45 pack years), Cor pulmonale',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Schleichender Beginn seit Morgen, akute Dekompensation vor 1 Std.',
+                    opqrst_p: 'Jedes Sprechen/Bewegen verschlimmert, Kutschersitz entlastet minimal',
+                    opqrst_q: 'Erstickungsgefühl, quälende Enge im Brustkorb',
+                    opqrst_r: 'Diffus über dem gesamten Thorax',
+                    opqrst_s: 'NRS 9 / 10 (Dyspnoe-Belastung / Todesangst)',
+                    opqrst_t: 'Seit ca. 4 Stunden anhaltend progredient'
+                }
+            },
+            'BRAND': {
+                code: '07D01',
+                badge: 'DELTA',
+                badgeColor: 'bg-orange-600 text-white',
+                name: 'Brandverletzter / Inhalation',
+                patient: { name: 'Brandt, Michael', age: '48 J.', sex: 'männlich', weight: 'ca. 80 kg', geb: '17.07.1977' },
+                isTrauma: true,
+                ftext: 'Wohnungsbrand, Verpuffung, Ruß im Gesicht, Brandwunden an Armen',
+                answers: {
+                    sicher: 'Ja, Patient durch Feuerwehr aus Gefahrenbereich gerettet',
+                    psa: 'Ja, Schutzhandschuhe & Maske angelegt',
+                    mechanismus: 'Thermische Einwirkung & Verpuffung',
+                    blutung_erst: 'Keine arterielle Blutung, Brandwunden nässend',
+                    haltung: 'Sitzend, hält verbrannte Unterarme hoch',
+                    spontanbew: 'Ja, schmerzbedingt unruhig',
+                    verletzungen: 'Verbrennungen 2. Grades an beiden Unterarmen (ca. 9% KOF), Rußspuren Gesicht',
+                    haut_erst: 'Rußverschmiert, Blasenbildung an Armen, Gesicht erythematös',
+                    abgang: 'Nein',
+                    wasb: 'W - Wach und orientiert',
+                    leitsymptom: 'Starke Wundschmerzen, Heiserkeit nach Rauchexposition',
+                    crit_bleed: 'Keine lebensbedrohliche Blutung',
+                    airway: 'Gefährdet! Ruß im Oropharynx, Heiserkeit, Inhalationstrauma möglich',
+                    atemgeraeusche: 'Leichtes inspiratorisches Stridor-Geräusch',
+                    hws: 'Keine HWS-Symptomatik, Verpuffung ohne Sturz',
+                    zyanose: 'Keine Zyanose',
+                    atemmuster: 'Regelmäßig, leicht forciert',
+                    thoraxexkursion: 'Seitengleich',
+                    af: '15 / min (Normfrequent)',
+                    atemtiefe: 'Ausreichend',
+                    ahm: 'Keine AHM aktiv',
+                    spo2: '98% bei Raumluft (SpCO beachten!)',
+                    auskultation: 'Vesikulär, keine RGs',
+                    atmung_suff: 'Aktuell suffizient, aber Schwellungsgefahr Atemwege!',
+                    haut_c: 'Stamm warm und trocken, Extremitäten verbrannt',
+                    puls: 'Kräftig, ca. 82 / min',
+                    rekap: '< 2 Sekunden an unverletzter Haut',
+                    stu: 'Kopf: Ruß an Nasenlöchern & Schnurrbart versengt; Thorax: o.B.; Abdomen: weich; Extremitäten: Verbrennung Grad IIa/b bds. Unterarme',
+                    zops: '4-fach orientiert',
+                    pupillen: 'Isokor, prompt',
+                    dms: 'An Händen trotz Verbrennung sensibel und motorisch intakt',
+                    fast: 'Negativ',
+                    gcs: '15 Punkte (E4 V5 M6)',
+                    abdomen: 'Weich, indolent',
+                    weitere_untersuchung: 'BZ 115 mg/dl, Temp 36.8 °C, RR 135/80 mmHg, CO-Hb Wert im Auge behalten',
+                    symptome: 'Brennender Wundschmerz, Heiserkeit, Hustenreiz',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Keine regelmäßige Dauermedikation',
+                    geschichte: 'Keine relevanten chronischen Vorerkrankungen',
+                    ins_outs: 'Frühstück vor ca. 3 Std.',
+                    ereignisse: 'Verpuffung beim Versuch, brennenden Mülleimer in Küche zu löschen',
+                    risikofaktoren: 'Inhalationstrauma in geschlossenem Raum',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Akut vor 25 Minuten bei Wohnungsbrand',
+                    opqrst_p: 'Jede Berührung der Wundflächen extrem schmerzhaft',
+                    opqrst_q: 'Brennend, schneidend, quälend',
+                    opqrst_r: 'Lokal auf beiden Unterarmen und Gesicht',
+                    opqrst_s: 'NRS 8 / 10',
+                    opqrst_t: 'Seit Verpuffung kontinuierlich brennend'
+                }
+            },
+            'KRAMPF': {
+                code: '12D02',
+                badge: 'DELTA',
+                badgeColor: 'bg-purple-600 text-white',
+                name: 'Status Epilepticus',
+                patient: { name: 'Eder, Lukas', age: '31 J.', sex: 'männlich', weight: 'ca. 78 kg', geb: '05.02.1995' },
+                isTrauma: false,
+                ftext: 'Krampfanfall in Bahnhofshalle, blutet aus dem Mund, jetzt postiktal',
+                answers: {
+                    sicher: 'Ja, Passanten abgeschirmt, Bahnhofshalle gesichert',
+                    psa: 'Ja, PSA ausreichend (Handschuhe)',
+                    mechanismus: 'Nein, zerebraler Krampfanfall',
+                    blutung_erst: 'Sickerblutung aus Zungenbiss, keine kritische Blutung',
+                    haltung: 'Am Boden liegend, schnarchende Atmung, postiktale Erschlaffung',
+                    spontanbew: 'Keine zielgerichteten Bewegungen, generalisiertes Muskelzucken sistiert',
+                    verletzungen: 'Lateraler Zungenbiss links, Schürfung Stirn',
+                    haut_erst: 'Zyanotisch-blass, feucht, überwärmt',
+                    abgang: 'Speichelfluss mit Blutbeimengung, Harnabgang positiv',
+                    wasb: 'S - Patient reagiert aktuell nur mit Stöhnen auf Schmerzreiz',
+                    leitsymptom: 'Postiktaler Zustand nach generalisiertem tonisch-klonischem Anfall',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Gefährdet durch zurückfallende Zunge und blutigen Speichel',
+                    atemgeraeusche: 'Schnarchendes, stertoröses Atemgeräusch',
+                    hws: 'Kein Anpralltrauma geschildert, Sturz am Boden',
+                    zyanose: 'Periphere und periorale Zyanose',
+                    atemmuster: 'Tachypnoeisch, tiefes schnaufendes Atmen',
+                    thoraxexkursion: 'Seitengleich',
+                    af: '22 / min (Postiktale Tachypnoe)',
+                    atemtiefe: 'Tief schnarchend',
+                    ahm: 'Gering aktiv',
+                    spo2: '89% bei Raumluft',
+                    auskultation: 'Grobblasige RGs durch Speichel im Rachen, sonst vesikulär',
+                    atmung_suff: 'Eingeschränkt, Überstrecken/Absaugen & O2 notwendig',
+                    haut_c: 'Warm, schweißig',
+                    puls: 'Kräftig, tachykard, ca. 125 / min',
+                    rekap: '< 2 Sekunden',
+                    stu: 'O.B. (Prellmarke Stirn, keine Frakturzeichen)',
+                    zops: 'Nicht orientiert (postiktale Enzephalopathie)',
+                    pupillen: 'Mittelweit, träge Lichtreaktion bds., kein Nystagmus',
+                    dms: 'Schlaffer Muskeltonus, keine fokale Seitenlähmung',
+                    fast: 'Nicht verwertbar (postiktal)',
+                    gcs: '8 Punkte (E2 V2 M4)',
+                    abdomen: 'Weich, unauffällig',
+                    weitere_untersuchung: 'BZ 95 mg/dl, Temp 38.2 °C (postiktale Hyperthermie), RR 155/90 mmHg, EKG: Sinustachykardie',
+                    symptome: 'Beobachteter tonisch-klonischer Anfall ca. 4 Min., postiktale Bewusstseinstrübung',
+                    allergien: 'Penicillin (Exanthem)',
+                    medikamente: 'Keppra (Levetiracetam) 1000mg (1-0-1-0), Lamictal (Lamotrigin) 100mg (1-0-1-0), Temesta 1mg Schmelztablette b.B.',
+                    geschichte: 'Strukturelle fokale Epilepsie mit sek. Generalisierung nach schwerem SHT (2021 mit Kontusionsblutung frontotemporobasal re), kognitive Einschränkung',
+                    ins_outs: 'Energy-Drink vor ca. 1 Std., Einnahme der Morgenmedikation fraglich',
+                    ereignisse: 'Im Bahnhof plötzlich initialer Schrei, Sturz und generalisierter Krampfanfall ca. 4 Minuten',
+                    risikofaktoren: 'Bekannte Epilepsie, Z.n. schwerem SHT, Schlafmangel, Non-Compliance Verdacht',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Plötzlicher Beginn des Anfalls vor ca. 15 Minuten',
+                    opqrst_p: 'Entfällt (Patient nicht voll ansprechbar)',
+                    opqrst_q: 'Postiktaler diffuser Kopfschmerz und Muskelschmerz',
+                    opqrst_r: 'Kopf und ganzer Körper',
+                    opqrst_s: 'NRS 6 / 10 (postiktaler Schmerz)',
+                    opqrst_t: 'Anfall sistiert, Reorientierungsphase hält an'
+                }
+            },
+            'TRAUMA': {
+                code: '29D02',
+                badge: 'DELTA',
+                badgeColor: 'bg-amber-600 text-white',
+                name: 'Verkehrsunfall / Schock',
+                patient: { name: 'Novak, Sophie', age: '23 J.', sex: 'weiblich', weight: 'ca. 58 kg', geb: '19.04.2002' },
+                isTrauma: true,
+                ftext: 'Fußgängerin gegen PKW mit ca. 40 km/h, reagiert verlangsamt, Schockzeichen',
+                answers: {
+                    sicher: 'Ja, Polizei sichert Unfallkreuzung ab',
+                    psa: 'Ja, Warnweste und Handschuhe angelegt',
+                    mechanismus: 'Hochrasanztrauma: Fußgängerin vs. PKW, Anprall an Motorhaube & Windschutzscheibe',
+                    blutung_erst: 'Großflächige Schürfungen, keine spritzende Blutung',
+                    haltung: 'Auf der Fahrbahn liegend in leichter Schonhaltung',
+                    spontanbew: 'Verlangsamt, hält sich Becken und rechten Arm',
+                    verletzungen: 'Krepitation Beckenring, Deformität rechter Oberschenkel, Schürfungen Thorax re',
+                    haut_erst: 'Blass, kaltschweißig, feucht',
+                    abgang: 'Nein',
+                    wasb: 'A - Reagiert verlangsamt auf laute Ansprache',
+                    leitsymptom: 'Polytrauma: Starke Schmerzen Becken, Thorax rechts und Oberschenkel, hämorrhagischer Schock',
+                    crit_bleed: 'Keine äußere arterielle Blutung (stumpfes Beckentrauma / Femurfraktur!)',
+                    airway: 'Frei, keine Verlegung',
+                    atemgeraeusche: 'Rechtsseitig abgeschwächtes Atemgeräusch',
+                    hws: 'ZWINGEND INDIZIERT! Manuelle In-Line Stabilisierung & Zervikalstütze',
+                    zyanose: 'Periphere Zyanose, Lippen blass',
+                    atemmuster: 'Tachypnoeisch, schmerzbedingt flach',
+                    thoraxexkursion: 'Asymmetrisch, Thorax rechts schont',
+                    af: '26 / min (Tachypnoe)',
+                    atemtiefe: 'Flach schmerzbedingt',
+                    ahm: 'Ja, sichtbarer Einsatz der Interkostalmuskulatur',
+                    spo2: '92% bei Raumluft',
+                    auskultation: 'Rechts basal abgeschwächt, links vesikulär',
+                    atmung_suff: 'Eingeschränkt bei Rippenserienfraktur/Pneumothoraxverdacht',
+                    haut_c: 'Blass, kühl, kaltschweißig',
+                    puls: 'Tachykard, fadenförmig, ca. 132 / min, schwach tastbar',
+                    rekap: '4 Sekunden (Deutlich verlängert - Schock!)',
+                    stu: 'Kopf: Schürfwunde Stirn; HWS: Druckschmerz; Thorax: Kompressionsschmerz rechts; Abdomen: gespannt; Becken: Instabil federnd (Beckenschlinge indiziert!); Femur re: Deformiert',
+                    zops: 'Desorientiert zu Zeit und Unfallgeschehen',
+                    pupillen: 'Isokor, prompt',
+                    dms: 'DMS rechte untere Extremität durch Fraktur eingeschränkt',
+                    fast: 'Negativ',
+                    gcs: '12 Punkte (E3 V4 M5)',
+                    abdomen: 'Gespannt, Druckschmerz Unterbauch',
+                    weitere_untersuchung: 'BZ 140 mg/dl, Temp 35.6 °C (Hypothermiegefahr!), RR 85/50 mmHg (Schock Index 1.55)',
+                    symptome: 'Stärkste Schmerzen Becken, Brustkorb rechts und Oberschenkel, Kältegefühl',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Cerazette (Desogestrel) 75µg (0-0-0-1), Ibuprofen 400mg b.B.',
+                    geschichte: 'Rezidivierende Cephalea vom Spannungstyp, Z.n. Tonsillektomie (2010), sonst völlig gesund',
+                    ins_outs: 'Mittagessen vor ca. 2 Std. (Salat & Wasser)',
+                    ereignisse: 'Wurde beim Überqueren der Straße von abbiegendem PKW frontal erfasst und ca. 6 Meter weggeschleudert',
+                    risikofaktoren: 'Schweres Hochrasanztrauma, hämorrhagischer Schock Grad II-III',
+                    schwangerschaft: 'Möglichkeit erfragen / laut Anamnese Cerazette',
+                    opqrst_o: 'Akut vor 10 Minuten durch Verkehrsunfall',
+                    opqrst_p: 'Jede Bewegung der Beine/des Beckens löst unerträgliche Schmerzen aus',
+                    opqrst_q: 'Stechend im Brustkorb, zerreißend im Becken',
+                    opqrst_r: 'Vom Becken in LWS und Oberschenkel ausstrahlend',
+                    opqrst_s: 'NRS 9 / 10',
+                    opqrst_t: 'Seit Unfallgeschehen kontinuierlich'
+                }
+            },
+            'STURZ': {
+                code: '17D03',
+                badge: 'DELTA',
+                badgeColor: 'bg-yellow-600 text-white',
+                name: 'Sturz aus Höhe (>4m)',
+                patient: { name: 'Horvath, Peter', age: '41 J.', sex: 'männlich', weight: 'ca. 85 kg', geb: '30.06.1984' },
+                isTrauma: true,
+                ftext: 'aus ca. 4,5m Höhe vom Baugerüst abgestürzt, starke Schmerzen LWS und Becken',
+                answers: {
+                    sicher: 'Ja, Baustelle abgesichert, keine herabfallenden Teile',
+                    psa: 'Ja, Schutzhelm & PSA angelegt',
+                    mechanismus: 'Sturz aus großer Höhe (> 3m Triagekriterium)',
+                    blutung_erst: 'Schürfungen und Risswunde Unterarm li, keine arterielle Blutung',
+                    haltung: 'In Rückenlage auf Bauschutt liegend, traut sich nicht zu bewegen',
+                    spontanbew: 'Arme beweglich, Beine werden schmerzbedingt ruhiggestellt',
+                    verletzungen: 'Druckschmerz LWS, Prellmarke linke Hüfte, Risswunde Unterarm',
+                    haut_erst: 'Blass, trocken, staubig',
+                    abgang: 'Nein, kein Abgang',
+                    wasb: 'W - Wach, voll orientiert',
+                    leitsymptom: 'Starke Schmerzen in Lendenwirbelsäule und linkem Becken',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Frei, keine Beeinträchtigung',
+                    atemgeraeusche: 'Keine Nebengeräusche',
+                    hws: 'ZWINGEND INDIZIERT! Vollständige Wirbelsäulen-Immobilisierung',
+                    zyanose: 'Keine Zyanose',
+                    atemmuster: 'Regelmäßig, normfrequent',
+                    thoraxexkursion: 'Seitengleich',
+                    af: '20 / min',
+                    atemtiefe: 'Normal',
+                    ahm: 'Keine AHM im Einsatz',
+                    spo2: '95% bei Raumluft',
+                    auskultation: 'Vesikuläres Atemgeräusch bds., kein Pneumothorax',
+                    atmung_suff: 'Ja, Atmung ist suffizient',
+                    haut_c: 'Warm, blass',
+                    puls: 'Kräftig, ca. 105 / min',
+                    rekap: '< 2 Sekunden',
+                    stu: 'Kopf: o.B.; HWS/BWS/LWS: Ausgeprägter Klopf- und Stauchungsschmerz L4/L5; Becken: Druckschmerz Iliosakralgelenk links; Extremitäten: DMS intakt',
+                    zops: '4-fach orientiert',
+                    pupillen: 'Isokor, prompt',
+                    dms: 'DMS an beiden Beinen vorhanden, Schmerzausstrahlung ins linke Bein',
+                    fast: 'Negativ',
+                    gcs: '15 Punkte (E4 V5 M6)',
+                    abdomen: 'Weich, kein Abwehrdruck',
+                    weitere_untersuchung: 'BZ 110 mg/dl, Temp 36.5 °C, RR 110/70 mmHg, EKG: Sinustachykardie',
+                    symptome: 'Schwere Rückenschmerzen LWS, Schmerzen linke Flanke und Hüfte',
+                    allergien: 'Pflasterallergie',
+                    medikamente: 'Pantoprazol 40mg (1-0-0-0), Magnesium Diasporal 300mg (0-0-1-0), Diclac retard (Diclofenac) 75mg b.B.',
+                    geschichte: 'Chronisch-rezidivierendes Lumbovertebralsyndrom, Bandscheibenprotrusion L4/L5 ohne OP, Z.n. Gastritis (2023 abgeheilt)',
+                    ins_outs: 'Jause vor 1,5 Std. (Wurstsemmel & Wasser)',
+                    ereignisse: 'Auf Baustelle Gerüstbrett verrutscht, ca. 4,5 Meter abgestürzt und auf den Rücken/Schutt geprallt',
+                    risikofaktoren: 'Sturzhöhe > 3m (V.a. Wirbelsäulenfraktur)',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Plötzlich beim Aufprall vor 15 Minuten',
+                    opqrst_p: 'Jede Bewegung der Beine oder Drehung verstärkt Schmerz massiv',
+                    opqrst_q: 'Stechend, bohrend, wie Messerstiche im Rücken',
+                    opqrst_r: 'Von LWS in linkes Gesäß und Oberschenkel',
+                    opqrst_s: 'NRS 8 / 10',
+                    opqrst_t: 'Seit Sturz kontinuierlich'
+                }
+            },
+            'ANAPHYLAXIE': {
+                code: '02E01',
+                badge: 'ECHO',
+                badgeColor: 'bg-rose-600 text-white',
+                name: 'Anaphylaxie Grad III',
+                patient: { name: 'Sommer, Katharina', age: '32 J.', sex: 'weiblich', weight: 'ca. 62 kg', geb: '08.09.1993' },
+                isTrauma: false,
+                ftext: 'Wespenstich im Halsbereich, massive Schwellung, Atemnot, Schwindel',
+                answers: {
+                    sicher: 'Ja, Parkbank im Schlosspark gesichert',
+                    psa: 'Ja, PSA ausreichend',
+                    mechanismus: 'Nein, allergische Anaphylaxie Grad III',
+                    blutung_erst: 'Keine Blutung',
+                    haltung: 'Vornübergebeugt auf Bank sitzend, Panik',
+                    spontanbew: 'Ja, nestelnd, kratzt sich am Hals und Brust',
+                    verletzungen: 'Wespenstich lateral rechts am Hals mit deutlicher Quaddelbildung',
+                    haut_erst: 'Generalisierte Urtikaria (Quaddeln) an Stamm und Hals, Gesicht geschwollen',
+                    abgang: 'Übelkeit und einmaliges Erbrechen',
+                    wasb: 'W - Wach, aber extrem unruhig und kaltschweißig',
+                    leitsymptom: 'Inspiratorischer Stridor, Larynxödem, anaphylaktischer Schock',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'AKUT GEFÄHRDET! Schwellung von Zunge, Uvula und Rachenschleimhaut',
+                    atemgeraeusche: 'Lautes inspiratorisches Ziehen (Stridor), giemendes Exspirium',
+                    hws: 'Nicht indiziert',
+                    zyanose: 'Periorale Zyanose, Lippen geschwollen',
+                    atemmuster: 'Tachypnoeisch, forciert',
+                    thoraxexkursion: 'Seitengleich',
+                    af: '30 / min (Schwere Tachypnoe)',
+                    atemtiefe: 'Oberflächlich, inspiratorisch behindert',
+                    ahm: 'Maximaler Einsatz der Atemhilfsmuskulatur',
+                    spo2: '88% bei Raumluft',
+                    auskultation: 'Inspiratorischer Stridor, exspiratorisches Giemen bds.',
+                    atmung_suff: 'Insuffizient! Akute Intubations- bzw. Adrenalingabe-Indikation',
+                    haut_c: 'Überwärmte Quaddeln, Extremitäten kühl/schockig',
+                    puls: 'Tachykard, fadenförmig, ca. 138 / min',
+                    rekap: '3-4 Sekunden (Kreislaufschock)',
+                    stu: 'O.B. (Kein Trauma)',
+                    zops: 'Orientiert, aber in ausgeprägter Todesangst',
+                    pupillen: 'Mydriatisch, prompt',
+                    dms: 'Intakt',
+                    fast: 'Schwellung Gesicht, aber symmetrisch (Quincke-Ödem)',
+                    gcs: '15 Punkte (E4 V5 M6)',
+                    abdomen: 'Krämpfe, weich',
+                    weitere_untersuchung: 'BZ 105 mg/dl, Temp 36.9 °C, RR 75/40 mmHg (Anaphylaktischer Schock), EKG: Sinustachykardie',
+                    symptome: 'Erstickungsgefühl, Kloß im Hals, generalisierter Juckreiz, Schwindel',
+                    allergien: 'Bekannte Hymenopterengift-Allergie Grad III (Wespengift, Vespula spp.), Frühblüher',
+                    medikamente: 'Desloratadin 5mg (1-0-0-0), Notfallset: FastJekt Autoinjektor (Adrenalin 300µg), Celestene Tropfen, Aerius',
+                    geschichte: 'Z.n. schwerer systemischer Anaphylaxie mit Notarztrettung (07/2023), Hyposensibilisierung bisher aufgeschoben',
+                    ins_outs: 'Eis gegessen vor 20 Minuten',
+                    ereignisse: 'Vor ca. 15 Minuten im Park von Wespe in den Hals gestochen, Notfall-Pen aus Angst noch nicht ausgelöst',
+                    risikofaktoren: 'Bekannte Grad-III-Allergie, Stich lokalisiert im Kopf-Hals-Bereich',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Akut 5 Minuten nach Insektenstich',
+                    opqrst_p: 'Schlucken unmöglich, Zungengrund schwillt spürbar an',
+                    opqrst_q: 'Brennender Juckreiz am ganzen Körper, quälende Erstickungsangst',
+                    opqrst_r: 'Hals, Rachen, Thorax, generalisiertes Exanthem',
+                    opqrst_s: 'NRS 9 / 10 (Subjektive Todesangst)',
+                    opqrst_t: 'Rasch progrediente Verschlechterung seit 15 Min.'
+                }
+            },
+            'CPR': {
+                code: '09E01',
+                badge: 'ECHO',
+                badgeColor: 'bg-red-700 text-white animate-pulse',
+                name: 'Kreislaufstillstand / CPR',
+                patient: { name: 'Wagner, Herbert', age: '68 J.', sex: 'männlich', weight: 'ca. 88 kg', geb: '17.12.1957' },
+                isTrauma: false,
+                ftext: 'plötzlich in Apotheke umgefallen, Laienreanimation & Telefon-CPR laufen',
+                answers: {
+                    sicher: 'Ja, Apotheke geräumt, Platz für Reanimation geschaffen',
+                    psa: 'Ja, PSA vollständig angelegt',
+                    mechanismus: 'Nein, plötzlicher Herztod',
+                    blutung_erst: 'Keine Blutung',
+                    haltung: 'Flach auf dem Boden liegend, Laien-HDM läuft',
+                    spontanbew: 'Keine Spontanbewegungen',
+                    verletzungen: 'Keine traumatischen Verletzungen',
+                    haut_erst: 'Leichenblass, zyanotisch, kalt',
+                    abgang: 'Stuhlgang und Urinabgang positiv',
+                    wasb: 'B - Bewusstlos, keinerlei Reaktion auf Reize',
+                    leitsymptom: 'Kreislaufstillstand (Cardiac Arrest), Kammerflimmern',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Verlegt durch zurückgefallene Zunge, Aspiration möglich',
+                    atemgeraeusche: 'Keine Atemgeräusche / Schnappatmung',
+                    hws: 'Nicht indiziert (beobachteter Kollaps)',
+                    zyanose: 'Generalisierte Zyanose an Gesicht und Extremitäten',
+                    atemmuster: 'Apnoe (Atemstillstand)',
+                    thoraxexkursion: 'Keine eigenständigen Thoraxexkursionen',
+                    af: '0 / min (Atemstillstand)',
+                    atemtiefe: 'Keine Atmung vorhanden',
+                    ahm: 'Keine Aktivität',
+                    spo2: '-- % (Nicht ableitbar)',
+                    auskultation: 'Kein Atemgeräusch',
+                    atmung_suff: 'NEIN! Reanimationspflichtig, sofortige Beutel-Masken-Beatmung!',
+                    haut_c: 'Kühl, wächsern blass-grau',
+                    puls: 'KEIN CAROTISPULS tastbar!',
+                    rekap: 'Nicht beurteilbar (> 5 Sek.)',
+                    stu: 'O.B. (Kein Trauma)',
+                    zops: 'Nicht orientiert / Koma',
+                    pupillen: 'Mydriatisch bds., lichtstarr',
+                    dms: 'Areflexie',
+                    fast: 'Nicht beurteilbar',
+                    gcs: '3 Punkte (E1 V1 M1)',
+                    abdomen: 'Weich, vorgewölbt',
+                    weitere_untersuchung: 'BZ 100 mg/dl, Temp 35.8 °C, RR 0/0 mmHg, EKG: KAMMERFLIMMERN (VF) -> Defibrillation!',
+                    symptome: 'Plötzlicher Kollaps ohne Vorwarnung, Bewusstlosigkeit, Apnoe',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Entresto 49/51mg (1-0-1-0), Carvedilol 25mg (1-0-1-0), Inspra 25mg (1-0-0-0), Jardiance 10mg (1-0-0-0), Thrombo ASS 100mg (1-0-0-0), Crestor 20mg (0-0-0-1)',
+                    geschichte: 'Chronische Herzinsuffizienz HFrEF (NYHA III, LVEF 32%), Z.n. 3-fach Bypass ACVB (2018), Art. Hypertonie Grad III, DM Typ 2, Niereninsuffizienz G3a',
+                    ins_outs: 'Frühstück vor ca. 2 Std.',
+                    ereignisse: 'Wollte Medikamente in Apotheke abholen, fasste sich an die Brust und brach bewusstlos zusammen',
+                    risikofaktoren: 'Schwere ischämische Kardiomyopathie, Z.n. Bypass, Diabetes mellitus, Alter 68 J.',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Plötzlicher Kollaps vor ca. 6 Minuten',
+                    opqrst_p: 'Entfällt (Reanimation)',
+                    opqrst_q: 'Entfällt (Bewusstlos)',
+                    opqrst_r: 'Entfällt',
+                    opqrst_s: 'NRS -- (Nicht ansprechbar)',
+                    opqrst_t: 'Herzdruckmassage läuft seit 4 Minuten'
+                }
+            },
+            'HYPO': {
+                code: '13C01',
+                badge: 'CHARLIE',
+                badgeColor: 'bg-amber-600 text-white',
+                name: 'Hypoglykämie / Diabetes',
+                patient: { name: 'Wimmer, Renate', age: '51 J.', sex: 'weiblich', weight: 'ca. 65 kg', geb: '11.03.1974' },
+                isTrauma: false,
+                ftext: 'bekannte Diabetikerin, verwirrt, aggressiv und zittrig in Wohnung aufgefunden',
+                answers: {
+                    sicher: 'Ja, Wohnung gesichert',
+                    psa: 'Ja, PSA ausreichend',
+                    mechanismus: 'Nein, metabolische Entgleisung',
+                    blutung_erst: 'Keine Blutung',
+                    haltung: 'Auf Küchenstuhl sitzend, fahrige Bewegungen, stützt sich auf Tisch',
+                    spontanbew: 'Grobschlägiger Tremor beider Hände, motorisch unruhig',
+                    verletzungen: 'Keine Verletzungen',
+                    haut_erst: 'Auffällig blass, profuser Kaltschweiß an Stirn und Händen',
+                    abgang: 'Nein',
+                    wasb: 'W - Wach, aber verwaschene Sprache und verlangsamt/aggressiv',
+                    leitsymptom: 'Schwere Hypoglykämie (BZ 32 mg/dl), Verwirrtheitszustand',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Frei, Schluckfähigkeit vor Gabe oraler Glukose prüfen!',
+                    atemgeraeusche: 'Keine pathologischen Nebengeräusche',
+                    hws: 'Nicht indiziert',
+                    zyanose: 'Keine Zyanose',
+                    atemmuster: 'Regelmäßig, normale Frequenz',
+                    thoraxexkursion: 'Seitengleich',
+                    af: '14 / min (Normfrequent)',
+                    atemtiefe: 'Normal',
+                    ahm: 'Keine AHM im Einsatz',
+                    spo2: '98% bei Raumluft',
+                    auskultation: 'Vesikuläres Atemgeräusch bds.',
+                    atmung_suff: 'Ja, Atmung ist suffizient',
+                    haut_c: 'Kühl, triefend nass geschwitzt',
+                    puls: 'Kräftig, ca. 98 / min',
+                    rekap: '< 2 Sekunden',
+                    stu: 'O.B. (Kein Trauma)',
+                    zops: 'Zeitlich & situativ desorientiert, erkennt Ehemann nur verzögert',
+                    pupillen: 'Isokor, weit, Lichtreaktion prompt',
+                    dms: 'Tremor, Sensibilitätsstörung Strumpfförmig (Polyneuropathie)',
+                    fast: 'Verwaschene Sprache, aber keine einseitige Lähmung',
+                    gcs: '13 Punkte (E4 V4 M5)',
+                    abdomen: 'Weich, unauffällig',
+                    weitere_untersuchung: 'BZ 32 mg/dl! (Akute Hypoglykämie), Temp 36.2 °C, RR 135/85 mmHg, EKG: Sinusrhythmus',
+                    symptome: 'Zittern, Schweißausbruch, Heißhunger, Desorientiertheit, Reizbarkeit',
+                    allergien: 'Jodhaltige Kontrastmittel (Exanthem)',
+                    medikamente: 'Tresiba 16 E abends, NovoRapid zu Mahlzeiten, Euthyrox 75µg (1-0-0-0), Lyrica 75mg (0-0-0-1), Baqsimi Nasenpulver 3mg Notfall',
+                    geschichte: 'Diabetes mellitus Typ 1 (seit 2011) mit Hypoglycemia Unawareness, diab. sensomotorische Polyneuropathie, Hashimoto-Thyreoiditis',
+                    ins_outs: 'Frühstück ausgelassen, aber vollen Bolus NovoRapid gespritzt',
+                    ereignisse: 'Ehemann kam nach Hause und fand Patientin verwirrt, schweißgebadet und zittrig in der Küche vor',
+                    risikofaktoren: 'DM Typ 1, fehlende Hypoglykämie-Wahrnehmung (Unawareness)',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Schleichender Beginn über die letzte Stunde',
+                    opqrst_p: 'Bessert sich erst nach Glukosezufuhr',
+                    opqrst_q: 'Schwindel, Benommenheit, "weiche Knie", Kältegefühl',
+                    opqrst_r: 'Keine umschriebene Schmerzausstrahlung',
+                    opqrst_s: 'NRS 4 / 10 (diffuser Kopfschmerz / Unwohlsein)',
+                    opqrst_t: 'Zunehmende Eintrübung in den letzten 40 Minuten'
+                }
+            },
+            'ABDOMEN': {
+                code: '01D01',
+                badge: 'DELTA',
+                badgeColor: 'bg-red-600 text-white',
+                name: 'Akutes Abdomen / Kolik',
+                patient: { name: 'Pichler, Gerald', age: '43 J.', sex: 'männlich', weight: 'ca. 84 kg', geb: '29.09.1982' },
+                isTrauma: false,
+                ftext: 'stärkste Bauch- und Flankenschmerzen rechts, Erbrechen, wälzt sich vor Schmerz',
+                answers: {
+                    sicher: 'Ja, Wohnung gesichert',
+                    psa: 'Ja, PSA ausreichend',
+                    mechanismus: 'Nein, urologisch / nephrologisch',
+                    blutung_erst: 'Keine äußere Blutung',
+                    haltung: 'Embryonale Schonhaltung auf Bett, wälzt sich unruhig hin und her',
+                    spontanbew: 'Ja, unruhige Entlastungsbewegungen',
+                    verletzungen: 'Keine Verletzungen',
+                    haut_erst: 'Blass, schmerzgeplagt, Schweißperlen auf Stirn',
+                    abgang: 'Mehrfaches galliges Erbrechen, Dysurie mit Mikrohämaturie',
+                    wasb: 'W - Wach, voll orientiert, stöhnt vor Schmerz',
+                    leitsymptom: 'Akute unerträgliche rechte Flankenkolik / Nierenkolik',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Frei, Erbrechen beachten',
+                    atemgeraeusche: 'Keine pathologischen Atemgeräusche',
+                    hws: 'Nicht indiziert',
+                    zyanose: 'Keine Zyanose',
+                    atemmuster: 'Tachypnoeisch schmerzbedingt',
+                    thoraxexkursion: 'Seitengleich',
+                    af: '20 / min',
+                    atemtiefe: 'Normal',
+                    ahm: 'Keine AHM aktiv',
+                    spo2: '97% bei Raumluft',
+                    auskultation: 'Vesikulär bds., seitengleich',
+                    atmung_suff: 'Ja, Atmung ist suffizient',
+                    haut_c: 'Warm, feucht, blass',
+                    puls: 'Kräftig, ca. 110 / min (Schmerztachykardie)',
+                    rekap: '< 2 Sekunden',
+                    stu: 'O.B. (Kein Trauma)',
+                    zops: '4-fach orientiert',
+                    pupillen: 'Isokor, mittelweit',
+                    dms: 'Intakt',
+                    fast: 'Negativ',
+                    gcs: '15 Punkte (E4 V5 M6)',
+                    abdomen: 'Massiver Klopfschmerz Nierenlager rechts, Druckschmerz re Unterbauch, keine Peritonitis',
+                    weitere_untersuchung: 'BZ 118 mg/dl, Temp 38.8 °C (V.a. Urosepsis/Infektstein!), RR 145/90 mmHg, EKG: Sinustachykardie',
+                    symptome: 'Stärkste wellenförmige Flankenschmerzen, Übelkeit, rezidivierendes Erbrechen',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Allopurinol 100mg (0-1-0-0), Pantoprazol 20mg (1-0-0-0), Buscopan PLUS (Bedarf)',
+                    geschichte: 'Rezidivierende Nephrolithiasis rechts (Z.n. URS & Laserlithotripsie 06/2025), Hyperurikämie, Z.n. Ulcus duodeni',
+                    ins_outs: 'Mittagessen vor 3 Std., Harnabgang schmerzhaft, dunkel/blutig verfärbt',
+                    ereignisse: 'Schmerzen begannen vor ca. 50 Min. plötzlich in der rechten Flanke und nahmen rasch kolikartig zu',
+                    risikofaktoren: 'Bekannte Uratsteine, chronische Hyperurikämie, Schmerzmittelbedarf',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Plötzlicher Beginn vor 50 Minuten',
+                    opqrst_p: 'Keine Schonhaltung bringt Linderung, ständiges Umherwälzen',
+                    opqrst_q: 'Krampfartig, stechend, wehenartig anschwellend ("Vernichtungskolik")',
+                    opqrst_r: 'Von rechter Flanke nach vorne in den rechten Unterbauch und Hoden',
+                    opqrst_s: 'NRS 9-10 / 10 (Stärkste vorstellbare Schmerzen)',
+                    opqrst_t: 'Wellenförmig mit Schmerzspitzen alle paar Minuten'
+                }
+            },
+            'INTOX': {
+                code: '23C01',
+                badge: 'CHARLIE',
+                badgeColor: 'bg-amber-600 text-white',
+                name: 'Intoxikation / Mischintox',
+                patient: { name: 'Nemeth, Kevin', age: '27 J.', sex: 'männlich', weight: 'ca. 72 kg', geb: '14.07.1998' },
+                isTrauma: false,
+                ftext: 'am Bahnsteig zusammengesunken, blaue Lippen, flache Schnappatmung',
+                answers: {
+                    sicher: 'Ja, U-Bahn-Station durch Aufsicht abgesichert',
+                    psa: 'Ja, Handschuhe & Infektionsschutz angelegt',
+                    mechanismus: 'Nein, toxikologische Opiat-/Mischintoxikation',
+                    blutung_erst: 'Keine Blutung',
+                    haltung: 'Zusammengesunken am Boden sitzend/liegend, schlaffer Muskeltonus',
+                    spontanbew: 'Keine Spontanbewegungen',
+                    verletzungen: 'Einstichstellen / Narben an beiden Unterarmen, keine Traumazeichen',
+                    haut_erst: 'Zyanotisch, blass, kühl',
+                    abgang: 'Nein',
+                    wasb: 'S/B - Reagiert kaum auf Schmerzreiz (Koma)',
+                    leitsymptom: 'Schwere Opioidintoxikation: Bradypnoe (AF 6), Miosis, Koma',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'AKUT GEFÄHRDET durch Aspiration und zurückfallende Zunge',
+                    atemgeraeusche: 'Rasselnde, flache Insuffizienzatmung',
+                    hws: 'Nicht indiziert',
+                    zyanose: 'Ausgeprägte Zyanose an Lippen, Schleimhäuten und Akren',
+                    atemmuster: 'Schwere Bradypnoe, unregelmäßige Atempausen',
+                    thoraxexkursion: 'Minimal, kaum sichtbare Hebung',
+                    af: '6 / min (Lebensbedrohliche Bradypnoe)',
+                    atemtiefe: 'Extrem flach und unzureichend',
+                    ahm: 'Keine AHM aktiv (Atemantrieb erloschen)',
+                    spo2: '82% bei Raumluft',
+                    auskultation: 'Kaum belüftet, hypoventiliert bds.',
+                    atmung_suff: 'Lebensbedrohlich insuffizient! Naloxon & Beutel-Maske sofort indiziert',
+                    haut_c: 'Kühl, blass-zyanotisch',
+                    puls: 'Bradykard, schwach tastbar, ca. 46 / min',
+                    rekap: '3 Sekunden',
+                    stu: 'O.B. (Injektionsmale bds. Unterarme)',
+                    zops: 'Nicht orientiert / Koma',
+                    pupillen: 'Eng wie Stecknadelköpfe (Miosis bds.), lichtstarr',
+                    dms: 'Areflexie, Muskelatonie',
+                    fast: 'Nicht beurteilbar',
+                    gcs: '5 Punkte (E1 V1 M3)',
+                    abdomen: 'Weich, indolent',
+                    weitere_untersuchung: 'BZ 85 mg/dl, Temp 35.2 °C (Hypothermie!), RR 95/60 mmHg, EKG: Sinusbradykardie',
+                    symptome: 'Bewusstlosigkeit, schwere Atemdepression, Miosis (Opioid-Trias)',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Substitol 400mg (1-0-0-0, Sichtbezug), Mirtazapin 15mg (0-0-0-1), Nyxoid (Naloxon Nasenspray) 1.8mg Notfall',
+                    geschichte: 'Opioidabhängigkeitssyndrom im OAT-Programm, Sedativa-/Benzodiazepin-Abhängigkeit bei Beikonsum, Z.n. Hep C (2024 geheilt)',
+                    ins_outs: 'Unbekannt, leere Blisterstreifen in Jackentasche gefunden',
+                    ereignisse: 'Passanten bemerkten, wie der junge Mann auf der Bank vornüber kippte und blau anlief',
+                    risikofaktoren: 'Substanzkonsum, Opioid-Überdosierung mit Mischintox (Benzos/Alkohol)',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Akut vor ca. 30 Minuten nach Konsum',
+                    opqrst_p: 'Entfällt (Koma)',
+                    opqrst_q: 'Entfällt (Nicht ansprechbar)',
+                    opqrst_r: 'Entfällt',
+                    opqrst_s: 'NRS -- (Nicht beurteilbar)',
+                    opqrst_t: 'Atemdepression seit ca. 15-20 Minuten progredient'
+                }
+            },
+            'PSYCH': {
+                code: '25B03',
+                badge: 'BRAVO',
+                badgeColor: 'bg-blue-600 text-white',
+                name: 'Panik / Hyperventilation',
+                patient: { name: 'Lang, Susanne', age: '36 J.', sex: 'weiblich', weight: 'ca. 60 kg', geb: '03.12.1989' },
+                isTrauma: false,
+                ftext: 'lt. Patientin schwere Panikattacke, Hyperventilation, Kribbeln Hände',
+                answers: {
+                    sicher: 'Ja, Wohnung im Dachgeschoss gesichert',
+                    psa: 'Ja, PSA ausreichend',
+                    mechanismus: 'Nein, psychiatrisch / psychovegetativ',
+                    blutung_erst: 'Keine Blutung',
+                    haltung: 'Kauernd auf Teppich, hechelt panisch, Hände verkrampft',
+                    spontanbew: 'Pfötchenstellung der Hände (Karpopedalspasmen)',
+                    verletzungen: 'Keine Verletzungen',
+                    haut_erst: 'Rosig, warm, schweißig an Handflächen',
+                    abgang: 'Nein',
+                    wasb: 'W - Wach, hyperventilierend, weint und äußert Todesangst',
+                    leitsymptom: 'Akute Panikattacke mit Hyperventilationssyndrom und Tetanie',
+                    crit_bleed: 'Keine kritischen Blutungen vorhanden',
+                    airway: 'Frei, spricht panisch und klagt über Kloßgefühl',
+                    atemgeraeusche: 'Lautes schnelles Luftholen ohne Stridor',
+                    hws: 'Nicht indiziert',
+                    zyanose: 'Keine Zyanose, Lippen rosig',
+                    atemmuster: 'Massive Tachypnoe (Hyperventilation), thorakal',
+                    thoraxexkursion: 'Sehr stark hebend, symmetrisch',
+                    af: '34 / min (Ausgeprägte Tachypnoe)',
+                    atemtiefe: 'Tief und schnell',
+                    ahm: 'Atemmuskulatur forciert',
+                    spo2: '100% bei Raumluft',
+                    auskultation: 'Vesikuläres Atemgeräusch bds., laut belüftet, keine RGs',
+                    atmung_suff: 'Ja, aber respiratorische Alkalose durch Hyperventilation',
+                    haut_c: 'Warm, rosig, trockener Stamm',
+                    puls: 'Tachykard, kräftig, ca. 122 / min',
+                    rekap: '< 2 Sekunden',
+                    stu: 'O.B. (Kein Trauma)',
+                    zops: 'Voll orientiert, aber gefangen in panischer Todesangst',
+                    pupillen: 'Isokor, weit (Sympathikotonus), prompt',
+                    dms: 'Parästhesien (Kribbeln) perioral und an Fingern, Pfötchenstellung bds.',
+                    fast: 'Negativ',
+                    gcs: '15 Punkte (E4 V5 M6)',
+                    abdomen: 'Weich, Reizdarm-typisch leichte diffuse Druckdolenz',
+                    weitere_untersuchung: 'BZ 95 mg/dl, Temp 36.7 °C, RR 150/90 mmHg, etCO2 22 mmHg (Ausgeprägte Hypokapnie), EKG: Sinustachykardie',
+                    symptome: 'Herzrasen, Brustbeklemmung, Erstickungsgefühl, Kribbeln Hände/Gesicht, Todesangst',
+                    allergien: 'Keine bekannten Allergien',
+                    medikamente: 'Cipralex (Escitalopram) 10mg (1-0-0-0), Duspatalin 135mg (1-0-1-0), Temesta Expidet 0.5mg b.B.',
+                    geschichte: 'Panikstörung mit Agoraphobie, rez. Panikattacken mit Hyperventilation, remittierte depressive Episode, Reizdarmsyndrom (RDS-D)',
+                    ins_outs: 'Mittagessen vor 2 Std., normale Miktion',
+                    ereignisse: 'Beim Betreten des vollen Hausflurs plötzlich massive Panikattacke mit Herzrasen und Atemnot',
+                    risikofaktoren: 'Bekannte Panikstörung, Agoraphobie, Hyperventilationsneigung',
+                    schwangerschaft: 'Nein / Entfällt',
+                    opqrst_o: 'Plötzlich vor ca. 20 Minuten im Stiegenhaus',
+                    opqrst_p: 'Ruhiges Zureden und Rückatmung/Lippenbremse beginnen zu entlasten',
+                    opqrst_q: 'Engegefühl, Stechen, Gefühl nicht genug Luft zu bekommen',
+                    opqrst_r: 'Diffus im gesamten Brustkorb ohne Ausstrahlung',
+                    opqrst_s: 'NRS 7 / 10 (Angst- und Beklemmungsgefühl)',
+                    opqrst_t: 'Seit 20 Minuten akut anhaltend'
+                }
+            }
+        };
+
+        // Standard-Struktur der App mit Platzhaltern, die vom Szenario befüllt werden
+        let appData = [
             {
                 id: "tab-ersteinschaetzung",
                 title: "1-2-3-4 Ersteinschätzung",
@@ -272,33 +1106,33 @@
                     {
                         title: "1 - Szenenüberblick",
                         buttons: [
-                            { q: "Einsatzstelle sicher?", a: "Ja, gesichert", icon: "fa-shield-halved" },
-                            { q: "PSA ausreichend?", a: "Ja, vollständig angelegt", icon: "fa-hard-hat" },
-                            { q: "Mechanismus erkennbar?", a: "Nein, kein Anhalt", icon: "fa-car-burst" }
+                            { key: "sicher", q: "Einsatzstelle sicher?", a: "Ja, gesichert", icon: "fa-shield-halved" },
+                            { key: "psa", q: "PSA ausreichend?", a: "Ja, vollständig angelegt", icon: "fa-hard-hat" },
+                            { key: "mechanismus", q: "Mechanismus erkennbar?", a: "Nein, kein Anhalt", icon: "fa-car-burst" }
                         ]
                     },
                     {
                         title: "2 - Ersteindruck",
                         buttons: [
-                            { q: "Lebensbedrohliche Blutung?", a: "Keine lebensbedrohliche Blutung", icon: "fa-droplet-slash" },
-                            { q: "Körperhaltung?", a: "Entspannt / Unauffällig", icon: "fa-person" },
-                            { q: "Spontanbewegungen vorhanden?", a: "Ja, zielgerichtet vorhanden", icon: "fa-person-walking" },
-                            { q: "Offensichtliche Verletzungen?", a: "Keine groben Verletzungen sichtbar", icon: "fa-bandage" },
-                            { q: "Geschlecht, Alter, Gewicht?", a: "Männlich, ca. 50 J., ca. 80 kg", icon: "fa-venus-mars" },
-                            { q: "Hautfarbe? Feuchtigkeit?", a: "Rosig, warm, trocken", icon: "fa-hand-dots" },
-                            { q: "Erbrochenes, Stuhl, Harn?", a: "Nein, kein Abgang", icon: "fa-toilet" }
+                            { key: "blutung_erst", q: "Lebensbedrohliche Blutung?", a: "Keine lebensbedrohliche Blutung", icon: "fa-droplet-slash" },
+                            { key: "haltung", q: "Körperhaltung?", a: "Entspannt / Unauffällig", icon: "fa-person" },
+                            { key: "spontanbew", q: "Spontanbewegungen vorhanden?", a: "Ja, zielgerichtet vorhanden", icon: "fa-person-walking" },
+                            { key: "verletzungen", q: "Offensichtliche Verletzungen?", a: "Keine groben Verletzungen sichtbar", icon: "fa-bandage" },
+                            { key: "demographie", q: "Geschlecht, Alter, Gewicht?", a: "Männlich, ca. 50 J., ca. 80 kg", icon: "fa-venus-mars" },
+                            { key: "haut_erst", q: "Hautfarbe? Feuchtigkeit?", a: "Rosig, warm, trocken", icon: "fa-hand-dots" },
+                            { key: "abgang", q: "Erbrochenes, Stuhl, Harn?", a: "Nein, kein Abgang", icon: "fa-toilet" }
                         ]
                     },
                     {
                         title: "3 - Bewusstseinslage",
                         buttons: [
-                            { q: "WASB?", a: "W - Patient ist wach und ansprechbar", icon: "fa-eye" }
+                            { key: "wasb", q: "WASB?", a: "W - Patient ist wach und ansprechbar", icon: "fa-eye" }
                         ]
                     },
                     {
                         title: "4 - Hauptbeschwerde",
                         buttons: [
-                            { q: "Leitsymptom?", a: "Akute Brustenge / Dyspnoe", icon: "fa-comment-medical" }
+                            { key: "leitsymptom", q: "Leitsymptom?", a: "Akute Brustenge / Dyspnoe", icon: "fa-comment-medical" }
                         ]
                     }
                 ]
@@ -311,55 +1145,55 @@
                     {
                         title: "c - Critical Bleeding",
                         buttons: [
-                            { q: "Starke Blutung?", a: "Keine kritischen Blutungen vorhanden", icon: "fa-droplet" }
+                            { key: "crit_bleed", q: "Starke Blutung?", a: "Keine kritischen Blutungen vorhanden", icon: "fa-droplet" }
                         ]
                     },
                     {
                         title: "A - Airway",
                         buttons: [
-                            { q: "Atemweg?", a: "Frei und nicht gefährdet", icon: "fa-wind" },
-                            { q: "Atemgeräusche?", a: "Keine pathologischen Geräusche (Stridor/Rasseln)", icon: "fa-volume-xmark" },
-                            { q: "HWS-Immobilisierung?", a: "Nicht indiziert (kein Trauma)", icon: "fa-user-injured" }
+                            { key: "airway", q: "Atemweg?", a: "Frei und nicht gefährdet", icon: "fa-wind" },
+                            { key: "atemgeraeusche", q: "Atemgeräusche?", a: "Keine pathologischen Geräusche (Stridor/Rasseln)", icon: "fa-volume-xmark" },
+                            { key: "hws", q: "HWS-Immobilisierung?", a: "Nicht indiziert (kein Trauma)", icon: "fa-user-injured" }
                         ]
                     },
                     {
                         title: "B - Breathing",
                         buttons: [
-                            { q: "Zyanose?", a: "Keine Zyanose erkennbar", icon: "fa-face-meh" },
-                            { q: "Atemmuster?", a: "Regelmäßig, eupnoisch", icon: "fa-wave-square" },
-                            { q: "Thoraxexkursion?", a: "Seitengleich und seitensymmetrisch", icon: "fa-arrows-left-right" },
-                            { q: "AF?", a: "14 / min (Normfrequent)", icon: "fa-stopwatch-20" },
-                            { q: "Atemtiefe?", a: "Normale Tiefe, ausreichend", icon: "fa-lungs" },
-                            { q: "Einsatz der AHM?", a: "Keine Atemhilfsmuskulatur im Einsatz", icon: "fa-compress" },
-                            { q: "Initiales SpO2?", a: "98% bei Raumluft", icon: "fa-heart-pulse" },
-                            { q: "Auskultation?", a: "Vesikuläres Atemgeräusch bds., keine RGs", icon: "fa-stethoscope" },
-                            { q: "Atmung suffizient?", a: "Ja, Atmung ist suffizient", icon: "fa-check-double" }
+                            { key: "zyanose", q: "Zyanose?", a: "Keine Zyanose erkennbar", icon: "fa-face-meh" },
+                            { key: "atemmuster", q: "Atemmuster?", a: "Regelmäßig, eupnoisch", icon: "fa-wave-square" },
+                            { key: "thoraxexkursion", q: "Thoraxexkursion?", a: "Seitengleich und seitensymmetrisch", icon: "fa-arrows-left-right" },
+                            { key: "af", q: "AF?", a: "14 / min (Normfrequent)", icon: "fa-stopwatch-20" },
+                            { key: "atemtiefe", q: "Atemtiefe?", a: "Normale Tiefe, ausreichend", icon: "fa-lungs" },
+                            { key: "ahm", q: "Einsatz der AHM?", a: "Keine Atemhilfsmuskulatur im Einsatz", icon: "fa-compress" },
+                            { key: "spo2", q: "Initiales SpO2?", a: "98% bei Raumluft", icon: "fa-heart-pulse" },
+                            { key: "auskultation", q: "Auskultation?", a: "Vesikuläres Atemgeräusch bds., keine RGs", icon: "fa-stethoscope" },
+                            { key: "atmung_suff", q: "Atmung suffizient?", a: "Ja, Atmung ist suffizient", icon: "fa-check-double" }
                         ]
                     },
                     {
                         title: "C - Circulation",
                         buttons: [
-                            { q: "Haut: Farbe, Temp., Beschaffenheit?", a: "Rosig, warm und trocken", icon: "fa-temperature-half" },
-                            { q: "Radialispuls/Carotispuls?", a: "Kräftig, rhythmisch, ca. 75/min", icon: "fa-heart-circle-bolt" },
-                            { q: "Rekap(z)?", a: "< 2 Sekunden (zentral & peripher)", icon: "fa-hourglass-start" },
-                            { q: "STU?", a: "O.B. (Kopf, Hals, Thorax, Abdomen, Becken, Extr. stabil)", icon: "fa-x-ray", fullWidth: true, requiresTrauma: true }
+                            { key: "haut_c", q: "Haut: Farbe, Temp., Beschaffenheit?", a: "Rosig, warm und trocken", icon: "fa-temperature-half" },
+                            { key: "puls", q: "Radialispuls/Carotispuls?", a: "Kräftig, rhythmisch, ca. 75/min", icon: "fa-heart-circle-bolt" },
+                            { key: "rekap", q: "Rekap(z)?", a: "< 2 Sekunden (zentral & peripher)", icon: "fa-hourglass-start" },
+                            { key: "stu", q: "STU?", a: "O.B. (Kopf, Hals, Thorax, Abdomen, Becken, Extr. stabil)", icon: "fa-x-ray", fullWidth: true, requiresTrauma: true }
                         ]
                     },
                     {
                         title: "D - Disability",
                         buttons: [
-                            { q: "ZOPS?", a: "4-fach orientiert (Zeit, Ort, Person, Situation)", icon: "fa-compass" },
-                            { q: "Pupillen?", a: "Isokor, mittelweit, prompte Lichtreaktion bds.", icon: "fa-eye" },
-                            { q: "DMS(K)?", a: "Durchblutung, Motorik & Sensibilität allseits intakt", icon: "fa-hand" },
-                            { q: "FAST+?", a: "Negativ (kein Hinweis auf Apoplex)", icon: "fa-brain" },
-                            { q: "GCS?", a: "15 Punkte (4-5-6)", icon: "fa-award" }
+                            { key: "zops", q: "ZOPS?", a: "4-fach orientiert (Zeit, Ort, Person, Situation)", icon: "fa-compass" },
+                            { key: "pupillen", q: "Pupillen?", a: "Isokor, mittelweit, prompte Lichtreaktion bds.", icon: "fa-eye" },
+                            { key: "dms", q: "DMS(K)?", a: "Durchblutung, Motorik & Sensibilität allseits intakt", icon: "fa-hand" },
+                            { key: "fast", q: "FAST+?", a: "Negativ (kein Hinweis auf Apoplex)", icon: "fa-brain" },
+                            { key: "gcs", q: "GCS?", a: "15 Punkte (4-5-6)", icon: "fa-award" }
                         ]
                     },
                     {
                         title: "E - Exposure",
                         buttons: [
-                            { q: "Abdomen?", a: "Weich, kein Druckschmerz, keine Abwehrspannung", icon: "fa-user-check" },
-                            { q: "Weitere Untersuchungen?", a: "BZ 110 mg/dl, Temp 36.8 °C, EKG SR", icon: "fa-magnifying-glass-chart" }
+                            { key: "abdomen", q: "Abdomen?", a: "Weich, kein Druckschmerz, keine Abwehrspannung", icon: "fa-user-check" },
+                            { key: "weitere_untersuchung", q: "Weitere Untersuchungen?", a: "BZ 110 mg/dl, Temp 36.8 °C, EKG SR", icon: "fa-magnifying-glass-chart" }
                         ]
                     }
                 ]
@@ -371,25 +1205,25 @@
                     {
                         title: "SAMPLER Anamnese",
                         buttons: [
-                            { q: "Symptome?", a: "Retrosternales Druckgefühl, leichte Übelkeit", icon: "fa-head-side-cough" },
-                            { q: "Allergien?", a: "Keine bekannten Allergien", icon: "fa-shield-virus" },
-                            { q: "Medikamente?", a: "ASS 100mg, Ramipril 5mg morgens", icon: "fa-pills" },
-                            { q: "Patientengeschichte?", a: "Arterielle Hypertonie seit 8 Jahren", icon: "fa-notes-medical" },
-                            { q: "Letzte Ins and Outs?", a: "Frühstück vor ca. 2 Std. (Kaffee & Toast)", icon: "fa-utensils" },
-                            { q: "Ereignisse?", a: "Schmerz trat in Ruhe beim Zeitunglesen auf", icon: "fa-calendar-check" },
-                            { q: "Risikofaktoren?", a: "Nikotinabusus, Hypertonie", icon: "fa-triangle-exclamation" },
-                            { q: "Schwangerschaft?", a: "Nein / Entfällt", icon: "fa-baby" }
+                            { key: "symptome", q: "Symptome?", a: "Retrosternales Druckgefühl, leichte Übelkeit", icon: "fa-head-side-cough" },
+                            { key: "allergien", q: "Allergien?", a: "Keine bekannten Allergien", icon: "fa-shield-virus" },
+                            { key: "medikamente", q: "Medikamente?", a: "ASS 100mg, Ramipril 5mg morgens", icon: "fa-pills" },
+                            { key: "geschichte", q: "Patientengeschichte?", a: "Arterielle Hypertonie seit 8 Jahren", icon: "fa-notes-medical" },
+                            { key: "ins_outs", q: "Letzte Ins and Outs?", a: "Frühstück vor ca. 2 Std. (Kaffee & Toast)", icon: "fa-utensils" },
+                            { key: "ereignisse", q: "Ereignisse?", a: "Schmerz trat in Ruhe beim Zeitunglesen auf", icon: "fa-calendar-check" },
+                            { key: "risikofaktoren", q: "Risikofaktoren?", a: "Nikotinabusus, Hypertonie", icon: "fa-triangle-exclamation" },
+                            { key: "schwangerschaft", q: "Schwangerschaft?", a: "Nein / Entfällt", icon: "fa-baby" }
                         ]
                     },
                     {
                         title: "Schmerzerfassung (OPQRST)",
                         buttons: [
-                            { q: "Onset?", a: "Plötzlicher Beginn vor ca. 45 Minuten", icon: "fa-bolt" },
-                            { q: "Provocation/Palliation?", a: "Weder bewegungs- noch atemabhängig", icon: "fa-hand-holding-medical" },
-                            { q: "Quality?", a: "Dumpf, drückend wie ein Stein auf der Brust", icon: "fa-circle-exclamation" },
-                            { q: "Radiation/Region?", a: "Retrosternal mit Ausstrahlung in li. Arm", icon: "fa-arrows-split-up-and-left" },
-                            { q: "Severity?", a: "NRS 7 / 10", icon: "fa-gauge-high" },
-                            { q: "Time?", a: "Konstant anhaltend, keine Besserung", icon: "fa-clock" }
+                            { key: "opqrst_o", q: "Onset?", a: "Plötzlicher Beginn vor ca. 45 Minuten", icon: "fa-bolt" },
+                            { key: "opqrst_p", q: "Provocation/Palliation?", a: "Weder bewegungs- noch atemabhängig", icon: "fa-hand-holding-medical" },
+                            { key: "opqrst_q", q: "Quality?", a: "Dumpf, drückend wie ein Stein auf der Brust", icon: "fa-circle-exclamation" },
+                            { key: "opqrst_r", q: "Radiation/Region?", a: "Retrosternal mit Ausstrahlung in li. Arm", icon: "fa-arrows-split-up-and-left" },
+                            { key: "opqrst_s", q: "Severity?", a: "NRS 7 / 10", icon: "fa-gauge-high" },
+                            { key: "opqrst_t", q: "Time?", a: "Konstant anhaltend, keine Besserung", icon: "fa-clock" }
                         ]
                     }
                 ]
@@ -533,6 +1367,7 @@
         let selectedReason = null;
         let timerInterval = null;
         let logEntries = [];
+        let activeScenarioKey = null;
 
         // App Initialisierung
         window.onload = function() {
@@ -547,6 +1382,18 @@
             }
 
             startTimer();
+            initScenarioModalLogic();
+
+            // Gespeichertes Szenario laden oder Standard / Dialog öffnen
+            const savedScenario = sessionStorage.getItem('active-scenario-key');
+            if (savedScenario && scenariosData[savedScenario]) {
+                applyScenarioData(savedScenario, false);
+            } else {
+                // Bei allererster Verwendung: Modal zur Auswahl automatisch öffnen
+                openScenarioModal();
+                applyScenarioData('ACS', false); // ACS als solider Default im Hintergrund
+            }
+
             renderTabs();
             renderContent();
             initModalLogic();
@@ -558,6 +1405,129 @@
             // PDF-Export Listener
             document.getElementById('btn-export-pdf').onclick = exportPDF;
         };
+
+        // Szenario-Logik & Datenübertragung
+        function applyScenarioData(key, shouldLog = true) {
+            const sc = scenariosData[key];
+            if (!sc) return;
+
+            activeScenarioKey = key;
+            sessionStorage.setItem('active-scenario-key', key);
+
+            // Badge & Status oben aktualisieren
+            const statusText = document.getElementById('status-scenario-text');
+            statusText.textContent = `${sc.code}: ${sc.name} (${sc.patient.name})`;
+
+            // Trauma Toggle Zustand setzen
+            sessionStorage.setItem('trauma-toggle-state', sc.isTrauma ? 'true' : 'false');
+
+            // Befunde in Ersteinschätzung, cABCDE und SAMPLER/OPQRST einspielen
+            const targetTabs = [appData[0], appData[1], appData[2]];
+            targetTabs.forEach(tab => {
+                tab.sections.forEach(sec => {
+                    sec.buttons.forEach(btn => {
+                        if (btn.key && sc.answers[btn.key] !== undefined) {
+                            btn.a = sc.answers[btn.key];
+                        }
+                    });
+                });
+            });
+
+            if (shouldLog) {
+                addLogEntry("Allgemein", "Szenario ausgewählt", `${sc.name} (${sc.code}) - Patient: ${sc.patient.name}, ${sc.patient.age}`);
+            }
+        }
+
+        function loadScenario(key) {
+            // Alte Button-Klicks für die Befunderhebung leeren, damit das Team frisch starten kann
+            clearAssessmentButtonStates();
+
+            applyScenarioData(key, true);
+            closeScenarioModal();
+            renderContent();
+        }
+
+        function clearAssessmentButtonStates() {
+            const keysToRemove = [];
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const k = sessionStorage.key(i);
+                if (k && (k.startsWith('btn-tab-ersteinschaetzung') || k.startsWith('btn-tab-cabcde') || k.startsWith('btn-tab-sampler'))) {
+                    keysToRemove.push(k);
+                }
+            }
+            keysToRemove.forEach(k => sessionStorage.removeItem(k));
+        }
+
+        function initScenarioModalLogic() {
+            const modal = document.getElementById('modal-scenario');
+            const btnOpen = document.getElementById('btn-open-scenarios');
+            const btnClose = document.getElementById('btn-close-scenario-modal');
+            const btnCancel = document.getElementById('btn-cancel-scenario-modal');
+            const searchInput = document.getElementById('scenario-search');
+
+            btnOpen.onclick = openScenarioModal;
+            btnClose.onclick = closeScenarioModal;
+            btnCancel.onclick = closeScenarioModal;
+
+            searchInput.oninput = (e) => {
+                renderScenarioCards(e.target.value);
+            };
+
+            renderScenarioCards();
+        }
+
+        function openScenarioModal() {
+            renderScenarioCards();
+            document.getElementById('modal-scenario').classList.remove('hidden');
+        }
+
+        function closeScenarioModal() {
+            document.getElementById('modal-scenario').classList.add('hidden');
+        }
+
+        function renderScenarioCards(filterText = "") {
+            const container = document.getElementById('scenario-cards-container');
+            container.innerHTML = "";
+            const search = filterText.toLowerCase().trim();
+
+            Object.keys(scenariosData).forEach(key => {
+                const sc = scenariosData[key];
+                const searchString = `${sc.code} ${sc.name} ${sc.patient.name} ${sc.badge}`.toLowerCase();
+
+                if (search && !searchString.includes(search)) return;
+
+                const isCurrent = (key === activeScenarioKey);
+
+                const card = document.createElement('button');
+                card.type = "button";
+                card.className = `text-left p-4 rounded-xl border-2 transition-all btn-transition flex flex-col justify-between ${isCurrent ? 'bg-blue-50 border-blue-600 shadow-md ring-2 ring-blue-500/20' : 'bg-white border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`;
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-2">
+                            <span class="font-mono text-xs font-bold px-2 py-0.5 rounded ${sc.badgeColor}">${sc.code}</span>
+                            <span class="text-[11px] font-bold text-slate-500 uppercase tracking-wider">${sc.badge}</span>
+                        </div>
+                        <h4 class="font-bold text-base text-slate-900 leading-snug mb-1">${sc.name}</h4>
+                        <div class="text-xs text-blue-700 font-semibold mb-2">
+                            <i class="fas fa-user-circle mr-1"></i>${sc.patient.name} (${sc.patient.age}, ${sc.patient.sex})
+                        </div>
+                        <p class="text-xs text-slate-500 line-clamp-2 leading-relaxed italic mb-3">"${sc.ftext}"</p>
+                    </div>
+                    <div class="flex items-center justify-between pt-2.5 border-t border-slate-100 mt-auto text-xs">
+                        <span class="font-semibold ${sc.isTrauma ? 'text-amber-700' : 'text-slate-500'}">
+                            <i class="fas ${sc.isTrauma ? 'fa-triangle-exclamation' : 'fa-stethoscope'} mr-1"></i>${sc.isTrauma ? 'Trauma / Unfall' : 'Internistisch'}
+                        </span>
+                        <span class="font-bold ${isCurrent ? 'text-blue-600' : 'text-slate-600 group-hover:text-blue-600'}">
+                            ${isCurrent ? 'Aktiv ✓' : 'Auswählen ➔'}
+                        </span>
+                    </div>
+                `;
+
+                card.onclick = () => loadScenario(key);
+                container.appendChild(card);
+            });
+        }
 
         // Timer Logik
         function startTimer() {
